@@ -1,0 +1,33 @@
+# Sensitive Credentials
+.env
+.env.local
+
+# Byte-compiled / Optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Logs and Databases
+*.log
+backtest_log.txt
+*.sqlite
+*.db
+
+# Data Exports
+*.csv
+backtest_data.json
+
+# IDE Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MacOS
+.DS_Store

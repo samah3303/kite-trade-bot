@@ -1,0 +1,8 @@
+flask
+numpy
+kiteconnect
+python-dotenv
+requests
+selenium
+webdriver-manager
+pyotp
