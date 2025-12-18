@@ -535,7 +535,12 @@ def run_live_mode():
 
     while not STOP_EVENT.is_set():
         try:
-            now = datetime.now()
+            # UTC Fix: Render/Cloud runs on UTC. Force IST time (UTC+5:30)
+            now_utc = datetime.utcnow()
+            now_ist = now_utc + timedelta(hours=5, minutes=30)
+            
+            # Using now_ist ensures we request data up to current India time
+            now = now_ist 
             start = now - timedelta(days=5)
             end = now
             
