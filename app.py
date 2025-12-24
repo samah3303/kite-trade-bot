@@ -6,7 +6,7 @@ import io
 import threading
 from dotenv import load_dotenv, set_key
 from kiteconnect import KiteConnect
-import rijin_alerts_kite as bot
+import unified_engine as bot
 
 load_dotenv()
 
@@ -70,19 +70,19 @@ def start_bot():
     bot.API_KEY = os.getenv("KITE_API_KEY")
     bot.ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN")
     
-    if bot.start_bot_thread():
-        return jsonify({"status": "started", "message": "Bot started successfully."})
-    return jsonify({"status": "error", "message": "Bot already running."})
+    if bot.runner.start():
+        return jsonify({"status": "started", "message": "Unified Engine started successfully."})
+    return jsonify({"status": "error", "message": "Engine already running."})
 
 @app.route('/stop', methods=['POST'])
 def stop_bot():
-    bot.stop_bot_thread()
-    return jsonify({"status": "stopped", "message": "Bot stop signal sent."})
+    bot.runner.stop()
+    return jsonify({"status": "stopped", "message": "Engine stop signal sent."})
 
 @app.route('/status')
 def status():
     # Check if bot thread is alive
-    is_running = bot.BOT_THREAD and bot.BOT_THREAD.is_alive()
+    is_running = bot.runner.thread and bot.runner.thread.is_alive()
     return jsonify({"running": bool(is_running)})
 
 @app.route('/logs')
