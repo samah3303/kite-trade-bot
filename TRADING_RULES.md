@@ -1,80 +1,86 @@
-# 📊 Trading Strategy Rules (Gold Guinea)
+# 📜 Algorithm Trading Rules (v2.0)
 
-This document details the exact logic used by the bot for Mode A, Mode B, and Mode C.
-
-## 🌍 Global Context
-
-- **Trend Timeframe**: 30 Minutes (EMA 20/50 Slope).
-- **Entry Timeframe**: 5 Minutes.
-- **Session Filter**: 14:00 to 23:30 (IST).
-- **Risk Management**:
-  - **Stop Loss**: Dynamic based on ATR (Volatility).
-  - **Targets**: Risk:Reward Ratio (1:2 for Trend, 1:1 for Scalp).
+This document serves as the "Constitution" for the Unified Trading Engine. It defines the logic for **Nifty 50**, **Bank Nifty**, and **Gold Guinea**.
 
 ---
 
-## 🟢 Mode A: Trend Reversal (Early Entry)
+## 🌍 General System Rules
 
-_Captures the start of a new trend when price reclaims the EMA._
-
-### Logic
-
-1.  **30m Trend**: Checks for a fresh trend shift (e.g., Neutral -> Bullish).
-2.  **5m Setups**:
-    - **Buy**: Price closes ABOVE EMA 20 after being below it for at least 3 candles.
-    - **Sell**: Price closes BELOW EMA 20 after being above it.
-3.  **Validation**:
-    - **RSI Filter**: Must be "Neutral" (Bullish: 55-68, Bearish: 32-45) to avoid exhaustion.
-    - **Freshness**: The cross must be a _fresh_ reclaim, not an old chopping market.
+- **Platform:** Kite Connect (Zerodha) + Telegram Alerts.
+- **Timeframes:**
+  - **Trend:** 30-Minute Candles (Trend Direction & Slope).
+  - **Entry:** 5-Minute Candles (Closed Candle Only).
+- **AI Integration:** Gemini Flash 2.0 analyzes every Entry/Exit for risk context.
+- **Safety**:
+  - **Blackout Periods:** No new trades after 14:30 (Indices) / 23:00 (Gold).
+  - **Kill Switch:** Algorithm stops if Daily PnL hits **-1.5R** or Max Trades **10**.
 
 ---
 
-## 🔵 Mode B: Trend Continuation (Pullback)
+## 1️⃣ NIFTY 50 Strategy (Strict Trend)
 
-_Enters an established trend on a dip or support test._
+**Philosophy:** "Patient Sniper". Only takes high-quality setups with structure alignment.
 
-### Logic
-
-1.  **30m Trend**: Must be clearly established (Bullish/Bearish confirmed > 10 candles).
-2.  **5m Setups**:
-    - **Pullback**: Price retraces to the EMA 20 zone.
-    - **Patterns**: "EMA Touch" or "Consolidation" near Support.
-3.  **Validation**:
-    - **RSI Filter**: Mid-range (Bullish: 45-62, Bearish: 38-55).
-    - **Structure**: Price must not have broken major swing points.
-
----
-
-## 🟣 Mode C: Momentum Breakout (Scalp)
-
-_High-probability momentum bursts, usually after consolidation._
-
-### Logic
-
-1.  **30m Trend**: Trend must be strong (Steep Slope).
-2.  **5m Setups**:
-    - **Breakout**: "Inside Bar Breakout", "Impulse Candle", or "Consolidation Breakout".
-    - **Volume**: Must be higher than Average Volume (20 period).
-3.  **Validation**:
-    - **RSI Filter**: Specific narrow range (40-60) to catch expansion before it becomes overbought/oversold.
-    - **Risk**: Tighter Stop Loss (0.6 \* ATR) and Target (1:1 RR).
+| Rule           | Mode A (Fresh)                   | Mode B (Pullback)                | Mode C (Mom/Breakout)           |
+| :------------- | :------------------------------- | :------------------------------- | :------------------------------ |
+| **Concept**    | Catch start of new trend.        | Buy dips in strong trend.        | Fast scalp on expansion.        |
+| **Logic**      | 30m Trend Reversal + 5m Reclaim. | Price touches EMA20 + Rejection. | Volatility Expansion + Pattern. |
+| **RSI (Buy)**  | 56 – 72                          | 52 – 65                          | 45 – 68                         |
+| **RSI (Sell)** | 28 – 44                          | 35 – 48                          | 32 – 55                         |
+| **Stop Loss**  | 1.2 ATR                          | 1.0 ATR                          | 0.8 ATR                         |
+| **Target**     | Trailing                         | 1.5 R                            | 1.2 R                           |
+| **Special**    | Must be "Fresh" (New Leg).       | Max 0.5 ATR Pullback Depth.      | Blocked if consolidated.        |
 
 ---
 
-## 🛡️ Risk Management (The "Kill Switch")
+## 2️⃣ BANK NIFTY Strategy (High Volatility)
 
-To protect capital, the bot enters a **STOP STATE** for the day if:
+**Philosophy:** "Aggressive Hunter". Wide stops to survive whipsaws; capitalized on big moves.
 
-1.  **Consecutive Losses**: 3 losses in a row.
-2.  **Drawdown**: Net PnL drops below -2.0 R (Risk Units).
-
-Once triggered, no new trades are taken until the next trading day.
+| Rule           | Mode A (Fresh)                    | Mode B (Pullback)                | Mode C (Scalp)                         |
+| :------------- | :-------------------------------- | :------------------------------- | :------------------------------------- |
+| **Concept**    | Survive initial volatility.       | Deep value entries.              | Quick hit in chaos.                    |
+| **Logic**      | 30m Trend Change + Thrust Candle. | **Deep** Pullback (0.2-0.6 ATR). | High Volatility (ATR>MA) + Inside Bar. |
+| **RSI (Buy)**  | 55 – 70                           | 50 – 62                          | 45 – 60                                |
+| **RSI (Sell)** | 30 – 45                           | 38 – 50                          | 40 – 55                                |
+| **Stop Loss**  | **1.4 ATR** (Wide)                | **1.2 ATR**                      | **0.9 ATR** (Fixed)                    |
+| **Target**     | Trailing (Aggressive)             | 2.0 R                            | **1.0 R Fixed** (No Trail)             |
+| **Special**    | Wick % Check (Body > 65%).        | Time-based Entry allowed.        | **Disabled** if ATR low.               |
 
 ---
 
-## 📉 Indicators Used
+## 3️⃣ GOLD GUINEA Strategy (Mean Reversion)
 
-- **EMA 20 & 50**: For Trend Direction and Support/Resistance.
-- **ATR (14)**: For Volatility-based Stop Loss/Target.
-- **RSI (14)**: For Momentum and Overbought/Oversold filtering.
-- **Volume**: For breakout confirmation.
+**Philosophy:** "Rhythmic Swinger". Exploits Gold's tendency to respect EMA20.
+
+| Rule           | Mode A (Reversal)          | Mode B (Touch)             | Mode C (Structure)    |
+| :------------- | :------------------------- | :------------------------- | :-------------------- |
+| **Concept**    | Trend Change Confirmation. | The "Standard" Gold trade. | Structure Breakouts.  |
+| **Logic**      | Price Crosses EMA20.       | EMA20 Touch + Rejection.   | Impulse / Inside Bar. |
+| **RSI (Buy)**  | 55 – 68                    | 45 – 62                    | 40 – 60               |
+| **RSI (Sell)** | 32 – 45                    | 38 – 55                    | 40 – 60               |
+| **Stop Loss**  | 2.0 ATR                    | 2.0 ATR                    | 0.6 ATR               |
+| **Target**     | 2.0 R                      | 2.0 R                      | 1.0 R                 |
+| **Special**    | Evening Session (14:00+).  | -                          | -                     |
+
+---
+
+## 🤖 AI Logic (The "Risk Manager")
+
+The AI does NOT generate signals. It **grades** them.
+
+1.  **Confidence Score (⚡):**
+
+    - **High (8-10):** Perfect alignment of Trend, Slope, and RSI.
+    - **Med (5-7):** Valid setup but mixed signals (e.g., lower timeframe divergence).
+    - **Low (1-4):** Counter-trend or dangerous volatility.
+
+2.  **Risk Verdict (🟢/🟡/🔴):**
+
+    - Based on ATR (Choppiness) and RSI Extremes.
+    - **Actionable Advice:** "Proceed", "Caution", or "Skip".
+
+3.  **Exit Analysis:**
+    - After a trade, AI reviews the outcome.
+    - **Reason:** Was it bad luck (news spike) or technical failure?
+    - **Lesson:** One line tip for future improvement.
