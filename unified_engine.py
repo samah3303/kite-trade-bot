@@ -462,6 +462,66 @@ class GoldStrategy:
             return new_trend
         except: return TrendState.NEUTRAL
 
+    def analyze_5m(self, c5, c30_trend, c30_slope, instrument_name):
+        try:
+            if not c5 or len(c5) < 30: return None
+            c = c5[-1]
+            closes = [float(x['close']) for x in c5]
+            highs = [float(x['high']) for x in c5]
+            lows = [float(x['low']) for x in c5]
+            
+            ema20 = simple_ema(closes, 20)
+            atr = calculate_atr(highs, lows, closes, 14)
+            rsi = calculate_rsi(closes, 14)
+            
+            P, H, L, O = float(c['close']), float(c['high']), float(c['low']), float(c['open'])
+            E20, ATR, RSI = float(ema20[-1]), float(atr[-1]), float(rsi[-1])
+            CURR_DATE = c['date']
+            
+            # 1. Trading Hours (14:00 - 23:30 for Gold)
+            t_now = CURR_DATE.time()
+            if not (dtime(14, 00) <= t_now <= dtime(23, 30)): return None
+            
+            signal, mode, pattern, sl_val, tp_val = None, None, None, 0.0, "TRAIL"
+            is_bullish = c30_trend == TrendState.BULLISH
+            is_bearish = c30_trend == TrendState.BEARISH
+            
+            # Gold Mode A: Trend Reversal (Cross of EMA20)
+            if self.leg_state == LegState.NEW:
+                if is_bullish and P > E20 and 55 <= RSI <= 68:
+                     signal, mode, pattern = "BUY", "MODE_A", "Trend Reversal"
+                     sl_val = P - (2.0 * ATR)
+                     tp_val = str(round(P + (2.0 * ATR), 2))
+                elif is_bearish and P < E20 and 32 <= RSI <= 45:
+                     signal, mode, pattern = "SELL", "MODE_A", "Trend Reversal"
+                     sl_val = P + (2.0 * ATR)
+                     tp_val = str(round(P - (2.0 * ATR), 2))
+
+            # Gold Mode B: Pullback Touch
+            if not signal and self.leg_state == LegState.CONFIRMED:
+                # Simple touch logic
+                touched_ema = (L <= E20 <= H)
+                if is_bullish and touched_ema and P > E20 and 45 <= RSI <= 62:
+                     signal, mode, pattern = "BUY", "MODE_B", "EMA20 Touch"
+                     sl_val = P - (2.0 * ATR)
+                     tp_val = str(round(P + (2.0 * ATR), 2))
+                elif is_bearish and touched_ema and P < E20 and 38 <= RSI <= 55:
+                     signal, mode, pattern = "SELL", "MODE_B", "EMA20 Touch"
+                     sl_val = P + (2.0 * ATR)
+                     tp_val = str(round(P - (2.0 * ATR), 2))
+
+            if signal:
+                return {
+                    "instrument": instrument_name,
+                    "mode": mode,
+                    "direction": signal,
+                    "entry": P, "sl": sl_val, "target": tp_val,
+                    "pattern": pattern, "rsi": RSI, "atr": ATR,
+                    "trend_state": c30_trend.name, "time": str(CURR_DATE)
+                }
+            return None
+        except: traceback.print_exc(); return None
+
 # -------------------------------------------------------------------
 # STRATEGY 3: BANK NIFTY (High Volatility Mode)
 # -------------------------------------------------------------------
