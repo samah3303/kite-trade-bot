@@ -1,86 +1,75 @@
-# 📜 Algorithm Trading Rules (v2.0)
+# 📜 Algorithm Trading Rules (v5.0 - NIFTY-CENTRIC)
 
-This document serves as the "Constitution" for the Unified Trading Engine. It defines the logic for **Nifty 50**, **Bank Nifty**, and **Gold Guinea**.
-
----
-
-## 🌍 General System Rules
-
-- **Platform:** Kite Connect (Zerodha) + Telegram Alerts.
-- **Timeframes:**
-  - **Trend:** 30-Minute Candles (Trend Direction & Slope).
-  - **Entry:** 5-Minute Candles (Closed Candle Only).
-- **AI Integration:** Gemini Flash 2.0 analyzes every Entry/Exit for risk context.
-- **Safety**:
-  - **Blackout Periods:** No new trades after 14:30 (Indices) / 23:00 (Gold).
-  - **Kill Switch:** Algorithm stops if Daily PnL hits **-1.5R** or Max Trades **10**.
+This is the **production constitution** for the Unified Trading Engine.
 
 ---
 
-## 1️⃣ NIFTY 50 Strategy (Strict Trend)
+## 0️⃣ INSTRUMENT SCOPE
 
-**Philosophy:** "Patient Sniper". Only takes high-quality setups with structure alignment.
-
-| Rule           | Mode A (Fresh)                   | Mode B (Pullback)                | Mode C (Mom/Breakout)           |
-| :------------- | :------------------------------- | :------------------------------- | :------------------------------ |
-| **Concept**    | Catch start of new trend.        | Buy dips in strong trend.        | Fast scalp on expansion.        |
-| **Logic**      | 30m Trend Reversal + 5m Reclaim. | Price touches EMA20 + Rejection. | Volatility Expansion + Pattern. |
-| **RSI (Buy)**  | 56 – 72                          | 52 – 65                          | 45 – 68                         |
-| **RSI (Sell)** | 28 – 44                          | 35 – 48                          | 32 – 55                         |
-| **Stop Loss**  | 1.2 ATR                          | 1.0 ATR                          | 0.8 ATR                         |
-| **Target**     | Trailing                         | 1.5 R                            | 1.2 R                           |
-| **Special**    | Must be "Fresh" (New Leg).       | Max 0.5 ATR Pullback Depth.      | Blocked if consolidated.        |
+| Instrument      | Status       | Role               |
+| --------------- | ------------ | ------------------ |
+| **NIFTY 50**    | ✅ PRIMARY   | Core profit engine |
+| **GOLD GUINEA** | ⚠️ SECONDARY | Regime-dependent   |
+| **BANK NIFTY**  | ❌ REMOVED   | No edge, high risk |
 
 ---
 
-## 2️⃣ BANK NIFTY Strategy (High Volatility)
+## 1️⃣ NIFTY 50 Strategy (The Engine)
 
-**Philosophy:** "Aggressive Hunter". Wide stops to survive whipsaws; capitalized on big moves.
+**Philosophy:** Momentum First, Patience Second.
 
-| Rule           | Mode A (Fresh)                    | Mode B (Pullback)                | Mode C (Scalp)                         |
-| :------------- | :-------------------------------- | :------------------------------- | :------------------------------------- |
-| **Concept**    | Survive initial volatility.       | Deep value entries.              | Quick hit in chaos.                    |
-| **Logic**      | 30m Trend Change + Thrust Candle. | **Deep** Pullback (0.2-0.6 ATR). | High Volatility (ATR>MA) + Inside Bar. |
-| **RSI (Buy)**  | 55 – 70                           | 50 – 62                          | 45 – 60                                |
-| **RSI (Sell)** | 30 – 45                           | 38 – 50                          | 40 – 55                                |
-| **Stop Loss**  | **1.4 ATR** (Wide)                | **1.2 ATR**                      | **0.9 ATR** (Fixed)                    |
-| **Target**     | Trailing (Aggressive)             | 2.0 R                            | **1.0 R Fixed** (No Trail)             |
-| **Special**    | Wick % Check (Body > 65%).        | Time-based Entry allowed.        | **Disabled** if ATR low.               |
+### 🅰️ MODE A — FRESH TREND (Rare)
+
+- **Goal:** Catch the birth of a new trend.
+- **Logic:** 30m Trend Reversal + 5m Reclaim.
+- **RSI:** 56–72 (Buy) / 28–44 (Sell).
+- **Risk:** SL ~1.2 ATR | Target ~2.0 ATR.
+
+### 🅱️ MODE B — PULLBACK (Strict Gate)
+
+- **Goal:** Buy the dip in a mature trend (Safely).
+- **Strict Gate (ALL Must Pass):**
+  1.  EMA Separation ≥ 0.25%
+  2.  ATR Flat/Falling (Last 3 candles)
+  3.  Price NOT making new High/Low
+- **Entry:** Rejection candle at EMA20.
+- **Risk:** SL: Rejection Low/High | Target: 1.2 R.
+- **Cool-off:** 1 loss → Skip next setup.
+
+### 🅲 MODE C — MOMENTUM (Primary)
+
+- **Goal:** Exploit fast intraday expansion. **(Main Profit Driver)**
+- **Eligibility:**
+  - 30m Trend Aligned.
+  - EMA Separation exists.
+  - ATR Rising (Expansion).
+- **Entry:** Breakout of recent structure (High/Low).
+- **Filters:** RSI > 55 (Buy) / < 45 (Sell). MACD Confirm.
+- **Loss Brake:** 3 consecutive losses → Pause Mode C for day.
 
 ---
 
-## 3️⃣ GOLD GUINEA Strategy (Mean Reversion)
+## 2️⃣ GOLD GUINEA Strategy (Auxiliary)
 
-**Philosophy:** "Rhythmic Swinger". Exploits Gold's tendency to respect EMA20.
+**Philosophy:** Mean Reversion only.
 
-| Rule           | Mode A (Reversal)          | Mode B (Touch)             | Mode C (Structure)    |
-| :------------- | :------------------------- | :------------------------- | :-------------------- |
-| **Concept**    | Trend Change Confirmation. | The "Standard" Gold trade. | Structure Breakouts.  |
-| **Logic**      | Price Crosses EMA20.       | EMA20 Touch + Rejection.   | Impulse / Inside Bar. |
-| **RSI (Buy)**  | 55 – 68                    | 45 – 62                    | 40 – 60               |
-| **RSI (Sell)** | 32 – 45                    | 38 – 55                    | 40 – 60               |
-| **Stop Loss**  | 2.0 ATR                    | 2.0 ATR                    | 0.6 ATR               |
-| **Target**     | 2.0 R                      | 2.0 R                      | 1.0 R                 |
-| **Special**    | Evening Session (14:00+).  | -                          | -                     |
+### 🅲 MODE C — MOMENTUM ONLY
+
+- **Goal:** Catch volatility spikes.
+- **Logic:** 30m Trend + 5m EMA Separation + **ATR Rising**.
+- **Risk:** SL: 0.5-1.0 ATR | Target: 2.0 R.
+- **Modes A & B:** **DISABLED**.
 
 ---
 
-## 🤖 AI Logic (The "Risk Manager")
+## 3️⃣ GLOBAL SAFETY RULES
 
-The AI does NOT generate signals. It **grades** them.
+1.  **Time Filter:** 09:30 – 14:30 (Nifty) / 14:00 – 23:30 (Gold).
+2.  **Kill Switch:**
+    - Daily Loss ≥ **-1.5 R**
+    - Max Trades = 7 (Nifty)
+3.  **Engine Logic:**
+    - **Live Watch:** Alerts ONLY. No execution.
+    - **Decision:** Closed Candle ONLY.
 
-1.  **Confidence Score (⚡):**
-
-    - **High (8-10):** Perfect alignment of Trend, Slope, and RSI.
-    - **Med (5-7):** Valid setup but mixed signals (e.g., lower timeframe divergence).
-    - **Low (1-4):** Counter-trend or dangerous volatility.
-
-2.  **Risk Verdict (🟢/🟡/🔴):**
-
-    - Based on ATR (Choppiness) and RSI Extremes.
-    - **Actionable Advice:** "Proceed", "Caution", or "Skip".
-
-3.  **Exit Analysis:**
-    - After a trade, AI reviews the outcome.
-    - **Reason:** Was it bad luck (news spike) or technical failure?
-    - **Lesson:** One line tip for future improvement.
+---

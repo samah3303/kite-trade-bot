@@ -6,3 +6,5 @@ requests
 selenium
 webdriver-manager
 pyotp
+pandas
+gunicorn

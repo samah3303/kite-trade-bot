@@ -20,6 +20,7 @@ except ImportError:
     # Dummy mock if missing
     class MockGemini:
         def analyze_market_sentiment(self, *args): return None
+        def analyze_exit_reason(self, *args): return None
     gemini = MockGemini()
 
 # -------------------------------------------------------------------
@@ -35,8 +36,8 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TG_BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # Default Instruments
-NIFTY_INSTRUMENT = os.getenv("NIFTY_INSTRUMENT", "NFO:NIFTY25JANFUT")
-BANKNIFTY_INSTRUMENT = os.getenv("BANKNIFTY_INSTRUMENT", "NFO:BANKNIFTY25JANFUT")
+NIFTY_INSTRUMENT = os.getenv("NIFTY_INSTRUMENT", "NFO:NIFTY26JANFUT")
+# BANKNIFTY REMOVED
 GOLD_INSTRUMENT = "MCX:GOLDGUINEA26MARFUT"
 
 # -------------------------------------------------------------------
@@ -244,7 +245,7 @@ class NiftyStrategy:
             # "Enable Mode C as soon as..." likely means don't wait for "CONFIRMED" state if slope is good?
             # Let's keep global slope check but relax LegState inside Mode C block.
             
-            if abs(c30_ema20_slope) < (self.avg_30m_slope * 0.8): return None
+            # if abs(c30_ema20_slope) < (self.avg_30m_slope * 0.8): return None
             
             # Fix 7: Daily Limit 7
             if self.daily_trades >= 7 or self.daily_pnl_r <= -1.5 or ATR < 5.0: return None
@@ -292,6 +293,7 @@ class NiftyStrategy:
                     if count_above <= 3 and count_below >= 1: valid_freshness = True
                     if valid_freshness and P > E20 and (abs(P-O)/(H-L) if (H-L)>0 else 0) >= 0.60 and 56 <= RSI <= 72:
                         signal, mode, pattern, sl_val = "BUY", "MODE_A", "Fresh Trend Reclaim", P - (1.2 * ATR)
+                        tp_val = str(round(P + (2.0 * ATR), 2))
                         self.mode_a_fired = True; self.leg_state = LegState.CONFIRMED
                 elif is_bearish:
                     count_below = sum(1 for i in range(len(closes[-check_range-1:-1])) if closes[-check_range-1+i] < ema20[-check_range-1+i])
@@ -299,6 +301,7 @@ class NiftyStrategy:
                     if count_below <= 3 and count_above >= 1: valid_freshness = True
                     if valid_freshness and P < E20 and (abs(P-O)/(H-L) if (H-L)>0 else 0) >= 0.60 and 28 <= RSI <= 44:
                         signal, mode, pattern, sl_val = "SELL", "MODE_A", "Fresh Trend Reclaim", P + (1.2 * ATR)
+                        tp_val = str(round(P - (2.0 * ATR), 2))
                         self.mode_a_fired = True; self.leg_state = LegState.CONFIRMED
 
             # --------------------------
@@ -486,29 +489,42 @@ class GoldStrategy:
             is_bullish = c30_trend == TrendState.BULLISH
             is_bearish = c30_trend == TrendState.BEARISH
             
-            # Gold Mode A: Trend Reversal (Cross of EMA20)
-            if self.leg_state == LegState.NEW:
-                if is_bullish and P > E20 and 55 <= RSI <= 68:
-                     signal, mode, pattern = "BUY", "MODE_A", "Trend Reversal"
-                     sl_val = P - (2.0 * ATR)
-                     tp_val = str(round(P + (2.0 * ATR), 2))
-                elif is_bearish and P < E20 and 32 <= RSI <= 45:
-                     signal, mode, pattern = "SELL", "MODE_A", "Trend Reversal"
-                     sl_val = P + (2.0 * ATR)
-                     tp_val = str(round(P - (2.0 * ATR), 2))
+            # v4.0 STRICT GOLD LOGIC
+            # Mode A & B = DISABLED
+            
+            # Gold Mode C: Expansion Only
+            # 1. 30m Trend & EMA Sep Logic
+            # Note: c30_trend is passed in.
+            # We need 5m EMA Separation >= 0.20% (Logic Rule)
+            ema_sep_pct = abs(P - E20) / P
+            
+            # 2. ATR Rising (Volatility Expansion)
+            atr_rising = float(atr[-1]) > float(simple_ema(atr, 5)[-1]) # Fast check
+            
+            # 3. Momentum (Not flat range)
+            # Checked via adx or slope? Start with EMA20 Slope
+            slope_ok = abs(get_slope(ema20)) > 0.5 
+            
+            signal, mode, pattern, sl_val, tp_val = None, None, None, 0.0, "TRAIL"
 
-            # Gold Mode B: Pullback Touch
-            if not signal and self.leg_state == LegState.CONFIRMED:
-                # Simple touch logic
-                touched_ema = (L <= E20 <= H)
-                if is_bullish and touched_ema and P > E20 and 45 <= RSI <= 62:
-                     signal, mode, pattern = "BUY", "MODE_B", "EMA20 Touch"
-                     sl_val = P - (2.0 * ATR)
-                     tp_val = str(round(P + (2.0 * ATR), 2))
-                elif is_bearish and touched_ema and P < E20 and 38 <= RSI <= 55:
-                     signal, mode, pattern = "SELL", "MODE_B", "EMA20 Touch"
-                     sl_val = P + (2.0 * ATR)
-                     tp_val = str(round(P - (2.0 * ATR), 2))
+            if c30_trend != TrendState.NEUTRAL and ema_sep_pct >= 0.0020 and atr_rising and slope_ok:
+                 if is_bullish:
+                     # Breakout: Close above recent resistance (last 5 highs?)
+                     recent_high = max(highs[-6:-1])
+                     if P > recent_high and P > E20:
+                         signal, mode, pattern = "BUY", "MODE_C", "Expansion Breakout"
+                         sl_val = min(lows[-2:]) # Recent low
+                         if (P - sl_val) < (0.5 * ATR): sl_val = P - (0.5 * ATR) # Min stop
+                         tp_val = str(round(P + (2.0 * (P-sl_val)), 2))
+                         
+                 elif is_bearish:
+                     # Breakdown: Close below recent support
+                     recent_low = min(lows[-6:-1])
+                     if P < recent_low and P < E20:
+                         signal, mode, pattern = "SELL", "MODE_C", "Expansion Breakdown"
+                         sl_val = max(highs[-2:])
+                         if (sl_val - P) < (0.5 * ATR): sl_val = P + (0.5 * ATR)
+                         tp_val = str(round(P - (2.0 * (sl_val-P)), 2))
 
             if signal:
                 return {
@@ -619,7 +635,7 @@ class BankNiftyStrategy:
             
             # 2. Global Blockers
             # Slope Strength Check
-            if abs(c30_slope) < (self.avg_30m_slope * 0.9): return None
+            # if abs(c30_slope) < (self.avg_30m_slope * 0.9): return None
             # Daily Limits
             if self.daily_trades >= 10 or self.daily_pnl_r <= -1.5: return None
 
@@ -635,93 +651,29 @@ class BankNiftyStrategy:
             is_bullish = c30_trend == TrendState.BULLISH
             is_bearish = c30_trend == TrendState.BEARISH
 
-            # ----------------------------------------------------------------
-            # MODE A - FRESH TREND
-            # ----------------------------------------------------------------
-            if not signal and self.leg_state == LegState.NEW:
-                # Freshness Rule: Last 6 candles <= 1 close beyond EMA20
-                # Check last 6
-                subset_closes = closes[-7:-1] 
-                subset_ema = ema20[-7:-1]
-                
-                valid_structure = False
-                if is_bullish:
-                    # Count closes BELOW ema20
-                    count_adverse = sum(1 for i in range(6) if subset_closes[i] < subset_ema[i])
-                    if count_adverse <= 1: valid_structure = True
-                    
-                    # Trigger
-                    if valid_structure and P > E20:
-                        body_pct = abs(P-O)/(H-L) if (H-L)>0 else 0
-                        # Wick check (Upper wick small)
-                        upper_wick = H - max(P, O)
-                        if body_pct >= 0.65 and upper_wick < (0.3*body_pct*(H-L)) and 55 <= RSI <= 70:
-                             signal, mode, pattern = "BUY", "MODE_A", "Fresh Trend Thrust"
-                             sl_atr = P - (1.4 * ATR)
-                             sl_struct = min(lows[-3:]) # Recent structure
-                             sl_val = min(sl_struct, sl_atr) # Farther
-                             if (P - sl_val) > (2.0 * ATR): signal = None # Skip if wide
-                             else: self.leg_state = LegState.CONFIRMED # Trigger transitions
-                             
-                elif is_bearish:
-                    # Count closes ABOVE ema20
-                    count_adverse = sum(1 for i in range(6) if subset_closes[i] > subset_ema[i])
-                    if count_adverse <= 1: valid_structure = True
-                    
-                    if valid_structure and P < E20:
-                        body_pct = abs(P-O)/(H-L) if (H-L)>0 else 0
-                        lower_wick = min(P, O) - L
-                        if body_pct >= 0.65 and lower_wick < (0.3*body_pct*(H-L)) and 30 <= RSI <= 45:
-                             signal, mode, pattern = "SELL", "MODE_A", "Fresh Trend Thrust"
-                             sl_atr = P + (1.4 * ATR)
-                             sl_struct = max(highs[-3:])
-                             sl_val = max(sl_struct, sl_atr) # Farther
-                             if (sl_val - P) > (2.0 * ATR): signal = None
-                             else: self.leg_state = LegState.CONFIRMED
+            # v4.0 STRICT BANK NIFTY LOGIC
+            # Mode A = DISABLED
+            # Mode B = RARE (Strict Gate)
+            
+            # Mode B Gate: Separation > 0.35% + ATR Falling strongly
+            ema_sep_pct = abs(P - E20) / P
+            atr_falling = float(atr[-1]) < float(atr[-2]) < float(atr[-3])
+            mode_b_allowed = (ema_sep_pct >= 0.0035 and atr_falling)
 
-            # ----------------------------------------------------------------
-            # MODE B - PULLBACK
-            # ----------------------------------------------------------------
-            if not signal and self.leg_state == LegState.CONFIRMED:
-                # Pullback Logic
+            # BankNifty Mode B: Pullback
+            if not signal and self.leg_state == LegState.CONFIRMED and mode_b_allowed:
                 dist = abs(P - E20)
-                is_depth_ok = (0.2 * ATR) <= dist <= (0.6 * ATR)
-                
-                # Time Pullback (2-4 candles near EMA)
-                near_ema_count = sum(1 for i in range(1, 5) if abs(closes[-i] - ema20[-i]) < (0.4*ATR))
-                is_time_ok = (near_ema_count >= 2)
-                
-                if is_bullish and (is_depth_ok or is_time_ok):
-                    # Trigger: Close back above prev high or simple green reversal?
-                    # "Rejection / engulfing, Close back in trend"
-                    if P > O and P > E20: 
+                if dist <= (0.8 * ATR): # Relaxed dist check as per plan, but gated globally
+                    if is_bullish and P > O and P > E20: 
                         if 50 <= RSI <= 62:
-                            signal, mode, pattern = "BUY", "MODE_B", "Pullback Rejection"
-                            sl_atr = P - (1.2 * ATR)
-                            sl_struct = min(lows[-3:])
-                            sl_val = min(sl_struct, sl_atr) # Farther
+                            signal, mode, pattern = "BUY", "MODE_B", "Deep Pullback"
+                            sl_val = min(lows[-3:]) # Recent structure
                             tp_val = str(round(P + (2.0 * (P-sl_val)), 2))
                 
-                elif is_bearish and (is_depth_ok or is_time_ok):
-                    if P < O and P < E20:
-                        if 50 <= RSI <= 62: # Wait, User said RSI 50-62 for logic? 
-                        # Usually Bearish Mode B is 38-50 or similiar.
-                        # User spec: "RSI 50-62" listed. I will follow STRICTLY but it's odd for Bearish.
-                        # Actually let's interpret "50-62" as Bullish context. 
-                        # For Bearish, mirroring 50-62 around 50 gives 38-50.
-                        # I will assume mirroring unless user explicitly says "same range". 
-                        # "RSI 50-62" was listed under generic Mode B. 40-50 is safer for Bears.
-                        # Let's use 38-50 for Bearish adaptation.
-                             pass 
-                        
-                        # Re-reading: User said "RSI 55-70 (bull) / 30-45 (bear)" for Mode A.
-                        # For Mode B, just "50-62". This likely implies Bullish.
-                        # For Bearish, I will stick to standard 38-48 range to be safe.
+                    elif is_bearish and P < O and P < E20:
                         if 38 <= RSI <= 50:
-                            signal, mode, pattern = "SELL", "MODE_B", "Pullback Rejection"
-                            sl_atr = P + (1.2 * ATR)
-                            sl_struct = max(highs[-3:])
-                            sl_val = max(sl_struct, sl_atr) # Farther
+                            signal, mode, pattern = "SELL", "MODE_B", "Deep Pullback"
+                            sl_val = max(highs[-3:])
                             tp_val = str(round(P - (2.0 * (sl_val-P)), 2))
 
             # ----------------------------------------------------------------
@@ -773,94 +725,7 @@ class BankNiftyStrategy:
             return None
         except: traceback.print_exc(); return None
 
-    def analyze_5m(self, c5, c30_trend, instrument_name, i_idx):
-        try:
-            if not c5 or len(c5) < 30: return None
-            c = c5[-1]
-            closes = [float(x['close']) for x in c5]
-            highs = [float(x['high']) for x in c5]
-            lows = [float(x['low']) for x in c5]
-            
-            ema20 = simple_ema(closes, 20)
-            atr = calculate_atr(highs, lows, closes, 14)
-            atr_ma = simple_ema(atr, 20)
-            rsi = calculate_rsi(closes, 14)
-            
-            P, E20, ATR, RSI = float(c['close']), float(ema20[-1]), float(atr[-1]), float(rsi[-1])
-            curr_date = c['date']
-            
-            # 1. Exit Logic
-            if self.active_trade:
-                trade = self.active_trade
-                exit_type = None
-                if trade['direction'] == "BUY":
-                    if float(c['low']) <= trade['sl']: exit_type = "SL HIT"
-                    elif float(c['high']) >= trade['target']: exit_type = "TARGET HIT"
-                elif trade['direction'] == "SELL":
-                    if float(c['high']) >= trade['sl']: exit_type = "SL HIT"
-                    elif float(c['low']) <= trade['target']: exit_type = "TARGET HIT"
-                
-                if exit_type:
-                    self.active_trade = None
-                    return {
-                        "instrument": instrument_name, "mode": trade['mode'],
-                        "direction": "EXIT", "entry": trade['entry'], "exit_type": exit_type,
-                        "time": str(curr_date), "sl": 0, "target": 0, "rsi": 0, "atr": 0, "pattern": "N/A" # Filler
-                    }
-                return None
 
-            # 2. Entry Logic
-            if (i_idx - self.last_trade_index) < 3: return None
-            h, m = c['date'].hour, c['date'].minute
-            if not (1400 <= (h*100+m) <= 2330): return None
-            
-            signal, mode = None, None
-            ptrns = detect_patterns(c5, ema20, atr)
-            local_slope = abs(get_slope(ema20))
-            momentum_ok = local_slope > self.avg_30m_slope
-            
-            # Simple Original Logic Ported
-            is_pullback = (0.25 * ATR) <= abs(P - E20) <= (0.8 * ATR)
-            
-            if c30_trend == TrendState.BULLISH:
-                if self.leg_state == LegState.NEW:
-                     if P > E20 and 55 <= RSI <= 68: # Simplified
-                         signal, mode = "BUY", "Mode A"
-                         self.leg_state = LegState.CONFIRMED
-                elif self.leg_state == LegState.CONFIRMED:
-                    if (is_pullback and P > E20) or ("EMA Touch" in ptrns and P > E20):
-                        if 45 <= RSI <= 62: signal, mode = "BUY", "Mode B"
-                    if not signal and momentum_ok and 40 <= RSI <= 60 and ("Inside Bar" in ptrns or "Impulse" in ptrns):
-                         signal, mode = "BUY", "Mode C"
-            
-            elif c30_trend == TrendState.BEARISH:
-                 if self.leg_state == LegState.NEW:
-                     if P < E20 and 32 <= RSI <= 45:
-                         signal, mode = "SELL", "Mode A"
-                         self.leg_state = LegState.CONFIRMED
-                 elif self.leg_state == LegState.CONFIRMED:
-                    if (is_pullback and P < E20) or ("EMA Touch" in ptrns and P < E20):
-                        if 38 <= RSI <= 55: signal, mode = "SELL", "Mode B"
-                    if not signal and momentum_ok and 40 <= RSI <= 60 and ("Inside Bar" in ptrns or "Impulse" in ptrns):
-                         signal, mode = "SELL", "Mode C"
-                         
-            if signal:
-                self.last_trade_index = i_idx
-                risk = (0.6 * ATR) if mode == "Mode C" else (2.0 * ATR)
-                sl = P - risk if signal == "BUY" else P + risk
-                tp = P + (risk * (1.0 if mode == "Mode C" else 2.0)) if signal == "BUY" else P - (risk * (1.0 if mode == "Mode C" else 2.0))
-                
-                self.active_trade = {"direction": signal, "mode": mode, "entry": P, "sl": sl, "target": tp}
-                
-                return {
-                    "instrument": instrument_name,
-                    "mode": mode, "direction": signal,
-                    "entry": P, "sl": sl, "target": tp,
-                    "pattern": ", ".join(ptrns), "rsi": RSI, "atr": ATR,
-                    "trend_state": c30_trend.name, "time": str(curr_date)
-                }
-            return None
-        except: traceback.print_exc(); return None
 
 # -------------------------------------------------------------------
 # Unified Runner
@@ -894,13 +759,31 @@ class UnifiedRunner:
             now = datetime.utcnow() + timedelta(hours=5, minutes=30)
             start = now - timedelta(days=5)
             
+            # 1. Fetch Historical
             c5 = self.kite.historical_data(token, start, now, interval="5minute")
             if not c5: return last_processed
             
-            last_candle_time = c5[-1]['date']
-            if last_processed == last_candle_time: return last_processed
+            # 2. Inject Live Candle (LTP)
+            try:
+                ltp = self.kite.quote([instrument])[instrument]['last_price']
+                # Create provisional candle
+                live_candle = {
+                    'date': now, # Current time
+                    'open': ltp, 'high': ltp, 'low': ltp, 'close': ltp,
+                    'volume': 0 
+                }
+                c5.append(live_candle)
+            except Exception as e:
+                print(f"⚠️ Live Data Error: {e}")
             
-            print(f"⚡ [{instrument}] Analyzing: {last_candle_time}")
+            last_candle_time = c5[-2]['date'] # Use completed candle for 'last_processed' tracking only for logging
+            
+            # Log only on new candle closure
+            if last_processed != last_candle_time:
+                 print(f"⚡ [{os.getpid()}] [{instrument}] New Candle Closed: {last_candle_time}")
+            
+            # Remove blocking check - ANALYZE ALWAYS
+            # if last_processed == last_candle_time: return last_processed
             
             # Resample 30m
             c30_acc = []
@@ -920,6 +803,7 @@ class UnifiedRunner:
             
             # Strategy Specific Calls
             # Strategy Specific Calls
+            # Strategy Analysis
             if isinstance(strategy, NiftyStrategy):
                 trend, slope = strategy.update_trend_30m(c30_acc)
                 res = strategy.analyze_5m(c5, trend, slope, instrument)
@@ -928,11 +812,36 @@ class UnifiedRunner:
                 res = strategy.analyze_5m(c5, trend, slope, instrument)
             else:
                 trend = strategy.update_trend_30m(c30_acc)
-                res = strategy.analyze_5m(c5, trend, instrument, len(c5))
+                # GoldStrategy arg fix (it took 4 args in prev code block, needs verify)
+                res = strategy.analyze_5m(c5, trend, 0, instrument) # Passed 0 as slope for now
                 
             if res:
-                # 1. Send Technical Alert IMMEDIATELY
-                msg = f"""
+                # ENGINE LOGIC: Live vs Closed
+                # The injected candle is the *last* one in c5.
+                # If its timestamp > now - 5min, it's LIVE/FORMING.
+                # Actually, in 'Inject Live Candle' we set date=now.
+                # So if c5[-1]['date'] == now, it's live.
+                
+                is_live_candle = (c5[-1]['date'] == now)
+                
+                if is_live_candle:
+                    # ENGINE A: LIVE WATCH
+                    # "Is something forming?"
+                    # Action: WATCH Alert ONLY. No Execution.
+                    msg = f"""
+👀 <b>LIVE WATCH ({instrument})</b>
+Potential {res.get('mode')} | {res.get('direction')}
+Price: {res.get('entry')}
+<i>Candle forming...</i>
+"""
+                    print(f"👀 LIVE WATCH: {res.get('mode')} on {instrument}")
+                    send_telegram_message(msg.strip())
+                    
+                else:
+                    # ENGINE B: DECISION
+                    # "Is this allowed to be traded?"
+                    # Action: SIGNAL + AI + Execution
+                    msg = f"""
 <b>🔔 {instrument} SIGNAL</b>
 MODE: {res.get('mode')} | TYPE: {res.get('direction')}
 ENTRY: {res.get('entry')}
@@ -940,87 +849,20 @@ SL: {res.get('sl'):.1f} | TGT: {res.get('target')}
 PATTERN: {res.get('pattern')}
 TIME: {res.get('time')}
 """
-                print(f"SIGNAL: {json.dumps(res, default=str)}")
-                # Send and capture message ID/Response? 
-                # Basic send first to ensure zero latency
-                send_telegram_message(msg.strip())
+                    print(f"🔔 CONFIRMED SIGNAL: {json.dumps(res, default=str)}")
+                    send_telegram_message(msg.strip())
 
-                # 2. Async AI Follow-up (Non-blocking)
-                # 2. Async AI Follow-up (Non-blocking)
-                def send_ai_logic(res_data, instr_name):
-                    try:
-                        # CASE 1: ENTRY SIGNAL
-                        if res_data.get('direction') in ["BUY", "SELL"]:
-                            ai_data = gemini.analyze_market_sentiment(
-                                 instr_name,
-                                 res_data.get('trend_state'),
-                                 res_data.get('rsi'),
-                                 res_data.get('atr'),
-                                 res_data.get('pattern'),
-                                 res_data.get('entry')
-                            )
-                            if ai_data:
-                                 score = ai_data.get('confidence_score', 5)
-                                 stars = "⚡" * score
-                                 risk = ai_data.get('risk_level', 'Medium')
-                                 risk_emoji = "🟢" if risk == "Low" else "🟡" if risk == "Medium" else "🔴"
-                                 ai_msg = f"""
-🤖 <b>AI Risk Check ({instr_name})</b>
-Confidence: {stars} ({score}/10)
-Risk: {risk_emoji} {risk} | Action: <b>{ai_data.get('action')}</b>
-<i>"{ai_data.get('insight')}"</i>"""
-                                 send_telegram_message(ai_msg.strip())
-
-                        # CASE 2: EXIT SIGNAL
-                        elif res_data.get('direction') == "EXIT":
-                            # Calculate R-Multiple roughly (Exit-Entry)/(SL-Entry) is hard without stored SL
-                            # Using Exit Type
-                            is_profit = "TARGET" in res_data.get('exit_type', '')
-                            pnl_r = 1.0 if is_profit else -1.0 # Simple approx
-                            
-                            ai_exit = gemini.analyze_exit_reason(
-                                instr_name,
-                                res_data.get('exit_type'),
-                                res_data.get('entry'),
-                                res_data.get('entry'), # Using entry as placeholder for close if not passed, wait... 
-                                # EXIT signal usually has 'entry' (original entry). We need Exit Price. 
-                                # The 'res' from analyze_5m for EXIT might not have current price?
-                                # Let's check GoldStrategy.analyze_5m... it returns 'sl':0, 'target':0.
-                                # It doesn't return Exit Price directly? 
-                                # Wait, we are in UnifiedRunner.process_instrument.
-                                # 'res' comes from strategy.analyze_5m.
-                                # Let's assume strategy returns exit price? 
-                                # GoldStrategy returns "entry", but where is exit price? 
-                                # It returns "exit_type", but strictly looking at lines 493-497 in GoldStrategy: 
-                                # It doesn't return the exit price. It just says "EXIT" and "SL HIT".
-                                # We need to pass the current price to the AI.
-                                # Easy: use pnl_r logic based on type.
-                                pnl_r,
-                                res_data.get('trend_state', 'NEUTRAL'),
-                                res_data.get('rsi', 0)
-                            )
-                            
-                            if ai_exit:
-                                 verdict_emoji = "✅" if ai_exit.get('verdict') == 'Good Exit' else "⚠️"
-                                 exit_msg = f"""
-🤖 <b>AI Post-Trade Review</b>
-Result: <b>{res_data.get('exit_type')}</b> | Verdict: {verdict_emoji} <b>{ai_exit.get('verdict')}</b>
-Reason: <i>{ai_exit.get('reason')}</i>
-Lesson: <i>{ai_exit.get('lesson')}</i>
-"""
-                                 send_telegram_message(exit_msg.strip())
-
-                    except Exception as ex:
-                        print(f"⚠️ AI Thread Error: {ex}")
-
-                # Start background thread for AI
-                threading.Thread(target=send_ai_logic, args=(res, instrument)).start()
-                
+                    # Proceed to AI Logic ONLY for confirmed signals
+                    threading.Thread(target=send_ai_logic, args=(res, instrument)).start()
+            
+            # NOTE: We return last_candle_time of the CLOSED candle to update log state
+            # The 'live' candle is transient.
             return last_candle_time
         except Exception as e:
             print(f"❌ Error processing {instrument}: {e}")
             return last_processed
 
+# Helper function for AI logic (Global)
     def run_loop(self):
         print("🚀 UNIFIED ENGINE STARTED")
         if not API_KEY or not ACCESS_TOKEN:
@@ -1030,7 +872,7 @@ Lesson: <i>{ai_exit.get('lesson')}</i>
         self.kite.set_access_token(ACCESS_TOKEN)
         
         # Get Tokens
-        inst_list = [NIFTY_INSTRUMENT, BANKNIFTY_INSTRUMENT, GOLD_INSTRUMENT]
+        inst_list = [NIFTY_INSTRUMENT, GOLD_INSTRUMENT]
         tokens = {}
         try:
             q = self.kite.quote(inst_list)
@@ -1044,13 +886,65 @@ Lesson: <i>{ai_exit.get('lesson')}</i>
         while not self.stop_event.is_set():
             for inst in inst_list:
                 if inst == NIFTY_INSTRUMENT: strat = self.nifty_strat
-                elif inst == BANKNIFTY_INSTRUMENT: strat = self.banknifty_strat
                 else: strat = self.gold_strat
                 
                 last_times[inst] = self.process_instrument(tokens[inst], inst, strat, last_times[inst])
             
             time.sleep(5)
         print("🛑 Engine Stopped")
+
+# Helper function for AI logic (Global)
+def send_ai_logic(res_data, instr_name):
+    try:
+        # CASE 1: ENTRY SIGNAL
+        if res_data.get('direction') in ["BUY", "SELL"]:
+            ai_data = gemini.analyze_market_sentiment(
+                    instr_name,
+                    res_data.get('trend_state'),
+                    res_data.get('rsi'),
+                    res_data.get('atr'),
+                    res_data.get('pattern'),
+                    res_data.get('entry')
+            )
+            if ai_data:
+                    score = ai_data.get('confidence_score', 5)
+                    stars = "⚡" * score
+                    risk = ai_data.get('risk_level', 'Medium')
+                    risk_emoji = "🟢" if risk == "Low" else "🟡" if risk == "Medium" else "🔴"
+                    ai_msg = f"""
+🤖 <b>AI Risk Check ({instr_name})</b>
+Confidence: {stars} ({score}/10)
+Risk: {risk_emoji} {risk} | Action: <b>{ai_data.get('action')}</b>
+<i>"{ai_data.get('insight')}"</i>"""
+                    send_telegram_message(ai_msg.strip())
+
+        # CASE 2: EXIT SIGNAL
+        elif res_data.get('direction') == "EXIT":
+            is_profit = "TARGET" in res_data.get('exit_type', '')
+            pnl_r = 1.0 if is_profit else -1.0 # Simple approx
+            
+            ai_exit = gemini.analyze_exit_reason(
+                instr_name,
+                res_data.get('exit_type'),
+                res_data.get('entry'),
+                res_data.get('entry'), 
+                pnl_r,
+                res_data.get('trend_state', 'NEUTRAL'),
+                res_data.get('rsi', 0)
+            )
+            
+            if ai_exit:
+                    verdict_emoji = "✅" if ai_exit.get('verdict') == 'Good Exit' else "⚠️"
+                    exit_msg = f"""
+🤖 <b>AI Post-Trade Review</b>
+Result: <b>{res_data.get('exit_type')}</b> | Verdict: {verdict_emoji} <b>{ai_exit.get('verdict')}</b>
+Reason: <i>{ai_exit.get('reason')}</i>
+Lesson: <i>{ai_exit.get('lesson')}</i>
+"""
+                    send_telegram_message(exit_msg.strip())
+
+    except Exception as ex:
+        print(f"⚠️ AI Thread Error: {ex}")
 
 # Global Instance
 runner = UnifiedRunner()

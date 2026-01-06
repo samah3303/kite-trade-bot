@@ -11,7 +11,7 @@ import unified_engine as bot
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'some_random_secret_key' # Needed for session
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "fallback_dev_secret_key") # Needed for session
 
 # Globals
 API_KEY = os.getenv("KITE_API_KEY")
