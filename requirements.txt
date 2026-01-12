@@ -8,3 +8,6 @@ webdriver-manager
 pyotp
 pandas
 gunicorn
+google-generativeai
+yfinance
+pytz

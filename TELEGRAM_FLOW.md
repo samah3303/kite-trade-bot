@@ -11,6 +11,28 @@ The system delivers **Zero Latency Rules-Based Alerts** followed immediately by 
 
 ## 2. Notification Samples (By Instrument)
 
+### 🌍 GLOBAL MARKET ANALYSIS (Context)
+
+**Trigger:** Login / 12:30 / 12:45 IST.
+
+```html
+🌍 GLOBAL MARKET CONTEXT US Markets: • S&P 500: ✅ +0.45% • Nasdaq: ⚠️ -0.12%
+Asia: • Nikkei: ✅ +0.80% Volatility & Macro: • VIX: 🔴 -6.20% • DXY: 0 (Stable)
+📊 Score: +3 Global Bias: 🟢 RISK_ON Impact: • MODE D: BUY preferred • MODE C:
+BUY confidence ↑
+```
+
+### 👁️ LIVE WATCH (Forming Setup)
+
+_Trigger: Valid setup conditions on a live (unclosed) candle._
+
+```html
+👀 LIVE WATCH (NFO:NIFTY25JANFUT) Potential MODE_A | BUY Price: 24155.0 Candle
+forming...
+```
+
+---
+
 ### A. NIFTY 50 (Trend Strategy)
 
 **Logic:** Strict Mode A/B/C. High structure focus.

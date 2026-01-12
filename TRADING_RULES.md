@@ -14,38 +14,61 @@ This is the **production constitution** for the Unified Trading Engine.
 
 ---
 
-## 1️⃣ NIFTY 50 Strategy (The Engine)
+## II. GLOBAL MARKET ANALYSIS MODULE (GMAM)
 
-**Philosophy:** Momentum First, Patience Second.
+**Purpose:** Daily context & directional bias.
+**Triggers:** Login, 12:30 IST, 12:45 IST.
 
-### 🅰️ MODE A — FRESH TREND (Rare)
+| Context      | Criteria   | Impact                                      |
+| :----------- | :--------- | :------------------------------------------ |
+| **RISK-ON**  | Score ≥ +2 | MODE D: BUY Only<br>MODE C: BUY Preferred   |
+| **RISK-OFF** | Score ≤ -2 | MODE D: SELL Only<br>MODE C: SELL Preferred |
+| **NEUTRAL**  | Others     | All Normal                                  |
 
-- **Goal:** Catch the birth of a new trend.
-- **Logic:** 30m Trend Reversal + 5m Reclaim.
-- **RSI:** 56–72 (Buy) / 28–44 (Sell).
-- **Risk:** SL ~1.2 ATR | Target ~2.0 ATR.
+---
 
-### 🅱️ MODE B — PULLBACK (Strict Gate)
+## III. DAY TYPE CLASSIFICATION
 
-- **Goal:** Buy the dip in a mature trend (Safely).
-- **Strict Gate (ALL Must Pass):**
-  1.  EMA Separation ≥ 0.25%
-  2.  ATR Flat/Falling (Last 3 candles)
-  3.  Price NOT making new High/Low
-- **Entry:** Rejection candle at EMA20.
-- **Risk:** SL: Rejection Low/High | Target: 1.2 R.
-- **Cool-off:** 1 loss → Skip next setup.
+**Purpose:** Detect CHOP early.
+**CHOP Criteria:** ATR Flat/Falling AND EMA20 Range < 0.3% AND Mixed Opening.
+**Impact:** If CHOP → **MODE D BLOCKED**.
 
-### 🅲 MODE C — MOMENTUM (Primary)
+---
 
-- **Goal:** Exploit fast intraday expansion. **(Main Profit Driver)**
-- **Eligibility:**
-  - 30m Trend Aligned.
-  - EMA Separation exists.
-  - ATR Rising (Expansion).
-- **Entry:** Breakout of recent structure (High/Low).
-- **Filters:** RSI > 55 (Buy) / < 45 (Sell). MACD Confirm.
-- **Loss Brake:** 3 consecutive losses → Pause Mode C for day.
+## IV. NIFTY 50 STRATEGY (PRIMARY)
+
+**Execution Order:**
+
+1. Global Analysis
+2. Day Type
+3. **MODE D (09:20-10:30)**
+4. **MODE C** (Core)
+5. **MODE A/B** (Aux)
+
+### 🅳 MODE D — OPENING DRIVE (Institutional)
+
+- **Time:** 09:20 – 10:30 IST.
+- **Goal:** Capture institutional opening momentum.
+- **Entry:** Option B (Conservative) - Pullback to EMA20 & Rejection.
+- **Risk:** SL: 1.0 ATR (or Structure) | Target: **1.5R Fixed**.
+- **Limit:** **MAX 1 TRADE/DAY**.
+
+### 🅲 MODE C — MOMENTUM (Core Engine)
+
+- **Goal:** Trend Continuation / Breakouts.
+- **Eligibility:** Trend Aligned, Volatility Expanding.
+- **Logic:** Range Breakouts, EMA Touches.
+- **Risk:** SL: ~0.8 ATR | Target: Trail or 1.2R.
+
+### 🅰️ MODE A — FRESH TREND
+
+- **Goal:** Reversal catch.
+- **Logic:** 30m Trend Change + 5m Reclaim.
+
+### 🅱️ MODE B — PULLBACK
+
+- **Goal:** Deep value in trend.
+- **Logic:** Deep pullback to EMA20 with rejection.
 
 ---
 

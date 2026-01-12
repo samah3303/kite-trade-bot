@@ -1,24 +1,29 @@
-# 🤖 Gold Guinea AI Trading Bot & Dashboard
+# 🤖 KiteAlerts - Multi-Strategy Trading Bot
 
-A sophisticated algorithmic trading system for **Gold Guinea Futures (MCX)** using the Zerodha Kite Connect API. This system features a multi-mode strategy engine (Reversal, Pullback, Breakout), real-time Telegram alerts, and a Web Dashboard for management.
+A sophisticated algorithmic trading system for **Indian markets (Nifty 50, Gold Guinea)** using the Zerodha Kite Connect API. This system features a multi-mode strategy engine (Reversal, Pullback, Momentum), Gemini AI integration, real-time Telegram alerts, and a Web Dashboard for management.
 
 ---
 
 ## ✨ Features
 
-- **Multi-Mode Strategy**:
-  - **Mode A (Reversal)**: Catches early trend changes using EMA crossovers.
-  - **Mode B (Pullback)**: Enters established trends on pullbacks/support tests.
-  - **Mode C (Breakout)**: Identifying high-momentum breakouts (with strict specific RSI conditions).
-- **Hybrid Timeframe Analysis**: Uses 30-minute trend context to filter 5-minute entry signals.
+- **Nifty-Centric Multi-Strategy Engine**:
+  - **Mode A (Fresh Trend)**: Catches early trend reversals (Rare, high-confidence setups)
+  - **Mode B (Pullback)**: Strict-gate pullback entries with ATR-based filters
+  - **Mode C (Momentum)**: Primary profit driver - breakouts, ORB, micro-range expansion
+  - Gold Guinea: Mode C only (Mean reversion disabled)
+- **Gemini AI Integration**:
+  - Entry analysis: Confidence scoring (1-10) + Risk assessment
+  - Exit analysis: Post-trade review with lessons learned
+- **Hybrid Timeframe Analysis**: 30-minute trend context filters 5-minute entry signals
 - **Smart Risk Management**:
-  - Dynamic Stop Loss & Target based on ATR (Volatility).
-  - **Daily Kill Switch**: Stops trading after 3 consecutive losses or -2R drawdown.
+  - Dynamic Stop Loss & Target based on ATR (Volatility)
+  - **Daily Kill Switch**: Max 7 trades or -1.5R drawdown limit
+  - Mode C Loss Brake: Pause after 2 consecutive losses
 - **Live Dashboard**:
-  - Web UI to Start/Stop the bot.
-  - Manual "Login with Zerodha" integrated flow to handle daily token expiry.
-  - Live Log Viewer.
-- **Telegram Integration**: Instant HTML-formatted alerts for Entries and Exits.
+  - Web UI to Start/Stop the bot
+  - Manual "Login with Zerodha" integrated flow to handle daily token expiry
+  - Live Log Viewer
+- **Telegram Integration**: Instant HTML-formatted alerts with AI analysis
 
 ---
 
@@ -58,18 +63,20 @@ A sophisticated algorithmic trading system for **Gold Guinea Futures (MCX)** usi
 You can run the bot script directly without the UI if desired:
 
 ```bash
-python rijin_alerts_kite.py
+python unified_engine.py
 ```
 
 ### Backtesting
 
-To test the strategy on historical data:
+Multiple backtest scripts are available for different strategies:
 
 ```bash
-python rijin_alerts_kite.py --backtest
+python backtest_unified.py        # Test unified multi-strategy engine
+python backtest_hybrid.py         # Test hybrid EMA + RSI strategy
+python backtest_bullish_candle.py # Test bullish pattern strategy
 ```
 
-Check `backtest_log.txt` for detailed results.
+Results are saved as CSV files with detailed trade logs.
 
 ---
 
@@ -91,11 +98,15 @@ Check `backtest_log.txt` for detailed results.
 
 ## 📂 Project Structure
 
-- `app.py`: Flask Web Server & UI Backend.
-- `rijin_alerts_kite.py`: Core Trading Engine & Strategy Logic.
-- `templates/dashboard.html`: Frontend UI.
-- `requirements.txt`: Python Dependencies.
-- `Procfile`: Render/Heroku Startup config.
+- `app.py`: Flask Web Server & UI Backend
+- `unified_engine.py`: Core Multi-Strategy Trading Engine
+- `gemini_helper.py`: Gemini AI Integration for Trade Analysis
+- `backtest_*.py`: Backtesting Scripts for Strategy Validation
+- `templates/dashboard.html`: Frontend UI
+- `requirements.txt`: Python Dependencies
+- `Procfile`: Render/Heroku Startup Config
+- `TRADING_RULES.md`: Strategy Constitution & Rules
+- `DETAILED_LOGIC.md`: Complete Code-Level Documentation
 
 ---
 
