@@ -3,185 +3,257 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gold Guinea Bot Dashboard</title>
+    <title>Unified Trading Console</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
+      :root {
+        --bg-color: #0f172a;
+        --card-bg: rgba(30, 41, 59, 0.7);
+        --accent-color: #3b82f6;
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+        --success: #10b981;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+        --glow: 0 0 20px rgba(59, 130, 246, 0.5);
+      }
+      
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      
       body {
-        background-color: #121212;
-        color: #e0e0e0;
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background-color: var(--bg-color);
+        background-image: radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                          radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
+        color: var(--text-primary);
+        font-family: "Inter", sans-serif;
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 20px;
+        min-height: 100vh;
+        padding: 40px 20px;
       }
+
       h1 {
-        margin-bottom: 20px;
-        color: #f1c40f;
+        font-weight: 800;
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+        background: linear-gradient(to right, #60a5fa, #34d399);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -1px;
       }
+      
+      .subtitle {
+        color: var(--text-secondary);
+        margin-bottom: 40px;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+
+      .status-card {
+        background: var(--card-bg);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 15px 30px;
+        border-radius: 99px;
+        margin-bottom: 40px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+      }
+      
+      .status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background-color: var(--text-secondary);
+      }
+      .status-dot.running {
+        background-color: var(--success);
+        box-shadow: 0 0 10px var(--success);
+        animation: pulse 1.5s infinite;
+      }
+      .status-dot.stopped {
+        background-color: var(--danger);
+      }
+      
+      @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+      }
+
       .controls {
         display: flex;
         gap: 20px;
-        margin-bottom: 20px;
+        margin-bottom: 30px;
       }
-      button {
-        padding: 15px 30px;
+      
+      button, .btn-login {
+        padding: 16px 32px;
         border: none;
-        border-radius: 8px;
-        font-size: 16px;
-        cursor: pointer;
-        font-weight: bold;
-        transition: opacity 0.2s;
-      }
-      button:hover {
-        opacity: 0.8;
-      }
-      .btn-start {
-        background-color: #27ae60;
-        color: white;
-      }
-      .btn-stop {
-        background-color: #c0392b;
-        color: white;
-      }
-      .status-box {
-        margin-bottom: 20px;
-        font-size: 18px;
-      }
-      .status-ind {
-        font-weight: bold;
-      }
-      .running {
-        color: #27ae60;
-      }
-      .stopped {
-        color: #c0392b;
-      }
-      #log-container {
-        width: 90%;
-        max-width: 800px;
-        height: 400px;
-        background-color: #1e1e1e;
-        border: 1px solid #333;
-        border-radius: 8px;
-        padding: 10px;
-        overflow-y: auto;
-        font-family: "Consolas", monospace;
+        border-radius: 12px;
         font-size: 14px;
-        color: #bdc3c7;
-        white-space: pre-wrap;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: white;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: "Inter", sans-serif;
       }
+      
+      button:hover, .btn-login:hover {
+        transform: translateY(-2px);
+        filter: brightness(1.1);
+      }
+      
+      button:active { transform: translateY(0); }
+
+      .btn-login { background: linear-gradient(135deg, #3b82f6, #2563eb); box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
+      .btn-start { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); }
+      .btn-stop { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
+      .btn-predict { background: linear-gradient(135deg, #8b5cf6, #7c3aed); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); border: 1px solid rgba(255,255,255,0.2); }
+
+      #log-container {
+        width: 100%;
+        max-width: 900px;
+        height: 500px;
+        background-color: #000;
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 20px;
+        overflow-y: auto;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        font-size: 13px;
+        color: #e2e8f0;
+        line-height: 1.5;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      }
+      
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: #0f172a; }
+      ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+      /* Modal */
+      .modal {
+        display: none; position: fixed; z-index: 100; left: 0; top: 0;
+        width: 100%; height: 100%; overflow: auto;
+        background-color: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
+      }
+      .modal-content {
+        background: #1e293b;
+        margin: 10% auto; padding: 40px;
+        border: 1px solid rgba(255,255,255,0.1);
+        width: 90%; max-width: 500px;
+        border-radius: 20px;
+        text-align: center;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        position: relative;
+        animation: slideIn 0.3s ease-out;
+      }
+      @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      
+      .close { position: absolute; top: 20px; right: 25px; color: #64748b; font-size: 28px; cursor: pointer; transition: 0.2s; }
+      .close:hover { color: #fff; }
+      
+      .modal h2 { margin-bottom: 20px; font-size: 1.5rem; color: #f8fafc; }
+      
+      #pred-decision { font-size: 2rem; margin: 20px 0; font-weight: 800; }
+      
+      .pred-details {
+        display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
+        margin-top: 20px; padding-top: 20px; border-top: 1px solid #334155;
+      }
+      .pred-details p { font-size: 0.85rem; color: #94a3b8; display: flex; flex-direction: column; gap: 5px; }
+      .pred-details span { color: #f1f5f9; font-weight: 600; font-size: 1rem; }
+      
+      #pred-trade-box {
+        margin-top: 25px; background: rgba(16, 185, 129, 0.1); 
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        border-radius: 12px; padding: 20px;
+      }
+      
     </style>
   </head>
   <body>
-    <h1>🤖 Gold Guinea Alert Bot</h1>
+    <h1>Unified Trading Console</h1>
+    <div class="subtitle">Advanced Algorithmic Execution Engine</div>
 
-    <div class="status-box">
-      System Status:
-      <span id="status-text" class="status-ind stopped">STOPPED</span>
+    <div class="status-card">
+      <div id="status-dot" class="status-dot stopped"></div>
+      <span id="status-text">SYSTEM OFFLINE</span>
     </div>
 
     <div class="controls">
-      <a href="/login" class="btn-login">🔑 LOGIN ZERODHA</a>
-      <button class="btn-start" onclick="startBot()">▶ START BOT</button>
-      <button class="btn-stop" onclick="stopBot()">⏹ STOP BOT</button>
+      <a href="/login" class="btn-login">
+        <!-- Icon: Key -->
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+        Login
+      </a>
+      <button class="btn-start" onclick="startBot()">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        Start Engine
+      </button>
+      <button class="btn-stop" onclick="stopBot()">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+        Stop Engine
+      </button>
       <button class="btn-predict" onclick="runPrediction()">
-        🔮 PREDICT
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 12h20M12 2v20M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"/></svg>
+        Predict
       </button>
     </div>
 
     <!-- Prediction Modal -->
     <div id="predict-modal" class="modal">
-      <div class="modal-content">
-        <span class="close" onclick="closeModal()">&times;</span>
-        <h2>Mode F Prediction</h2>
-        <div id="predict-loading">Analyzing Market...</div>
-        <div id="predict-result" style="display: none">
-          <h3 id="pred-decision"></h3>
-          <p><strong>Reason:</strong> <span id="pred-reason"></span></p>
-          <div class="pred-details">
-            <p>Volatility: <span id="pred-vol"></span></p>
-            <p>Structure: <span id="pred-struct"></span></p>
-            <p>Global Bias: <span id="pred-global"></span></p>
-          </div>
-          <div
-            id="pred-trade-box"
-            style="
-              display: none;
-              background: #2c3e50;
-              padding: 10px;
-              border-radius: 5px;
-              margin-top: 10px;
-            "
-          >
-            <p>🚀 <strong>Direction:</strong> <span id="pred-dir"></span></p>
-            <p>🎯 Entry: <span id="pred-entry"></span></p>
-            <p>🛑 Stop: <span id="pred-sl"></span></p>
-            <p>🏁 Target: <span id="pred-tgt"></span></p>
-          </div>
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>NIFTY PREDICTIVE ENGINE</h2>
+            <div id="predict-loading" style="color: #94a3b8;">
+                <svg style="animation: spin 1s linear infinite; margin-bottom: 10px;" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+                <br>Scanning Market Structure...
+            </div>
+            <div id="predict-result" style="display:none;">
+                <div id="pred-decision"></div>
+                <p style="color:#cbd5e1; font-size: 1.1rem;">Reason: <span id="pred-reason" style="color:#fff;"></span></p>
+                
+                <div class="pred-details">
+                    <p>Volatility <span id="pred-vol">--</span></p>
+                    <p>Structure <span id="pred-struct">--</span></p>
+                    <p>Global Bias <span id="pred-global">--</span></p>
+                </div>
+                
+                <div id="pred-trade-box" style="display:none;">
+                    <div style="font-size: 1.2rem; font-weight: 800; margin-bottom: 10px; color: #10b981;">
+                        <span id="pred-dir"></span> SIGNAL
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-family: monospace; font-size: 1.1rem;">
+                        <div>@ <span id="pred-entry"></span></div>
+                        <div style="color: #ef4444;">SL: <span id="pred-sl"></span></div>
+                        <div style="color: #10b981;">TGT: <span id="pred-tgt"></span></div>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
+    
+    <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
 
-    <style>
-      .btn-login {
-        background-color: #3498db;
-        color: white;
-        padding: 15px 30px;
-        border-radius: 8px;
-        text-decoration: none;
-        font-weight: bold;
-        display: inline-block;
-        transition: opacity 0.2s;
-        font-family: inherit;
-      }
-      .btn-login:hover {
-        opacity: 0.8;
-      }
-      .btn-predict {
-        background-color: #9b59b6;
-        color: white;
-      }
-      /* Modal Styles */
-      .modal {
-        display: none;
-        position: fixed;
-        z-index: 1;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        overflow: auto;
-        background-color: rgba(0, 0, 0, 0.8);
-      }
-      .modal-content {
-        background-color: #1e1e1e;
-        margin: 15% auto;
-        padding: 20px;
-        border: 1px solid #888;
-        width: 80%;
-        max-width: 500px;
-        border-radius: 10px;
-        text-align: center;
-      }
-      .close {
-        color: #aaa;
-        float: right;
-        font-size: 28px;
-        font-weight: bold;
-        cursor: pointer;
-      }
-      .close:hover,
-      .close:focus {
-        color: #fff;
-        text-decoration: none;
-        cursor: pointer;
-      }
-    </style>
-
-    <div id="log-container">Loading logs...</div>
-
+    <div id="log-container">Initializing Console...</div>
+    
     <script>
       const statusText = document.getElementById("status-text");
+      const statusDot = document.getElementById("status-dot");
       const logBox = document.getElementById("log-container");
       const modal = document.getElementById("predict-modal");
       const loadingDiv = document.getElementById("predict-loading");
@@ -192,103 +264,79 @@
           const res = await fetch("/status");
           const data = await res.json();
           if (data.running) {
-            statusText.textContent = "RUNNING";
-            statusText.className = "status-ind running";
+            statusText.textContent = "SYSTEM ONLINE";
+            statusText.style.color = "#10b981";
+            statusDot.className = "status-dot running";
           } else {
-            statusText.textContent = "STOPPED";
-            statusText.className = "status-ind stopped";
+            statusText.textContent = "SYSTEM OFFLINE";
+            statusText.style.color = "#ef4444";
+            statusDot.className = "status-dot stopped";
           }
-        } catch (e) {
-          console.error(e);
-        }
+        } catch (e) { console.error(e); }
       }
 
       async function fetchLogs() {
         try {
           const res = await fetch("/logs");
           const data = await res.json();
-          logBox.textContent = data.logs;
-          logBox.scrollTop = logBox.scrollHeight;
-        } catch (e) {
-          console.error(e);
-        }
+          if(logBox.textContent !== data.logs) {
+              logBox.textContent = data.logs;
+              logBox.scrollTop = logBox.scrollHeight;
+          }
+        } catch (e) { console.error(e); }
       }
 
-      async function startBot() {
-        await fetch("/start", { method: "POST" });
-        setTimeout(updateStatus, 1000);
-      }
-
-      async function stopBot() {
-        await fetch("/stop", { method: "POST" });
-        setTimeout(updateStatus, 1000);
-      }
-
-      function closeModal() {
-        modal.style.display = "none";
-      }
-
+      async function startBot() { await fetch("/start", { method: "POST" }); setTimeout(updateStatus, 500); }
+      async function stopBot() { await fetch("/stop", { method: "POST" }); setTimeout(updateStatus, 500); }
+      function closeModal() { modal.style.display = "none"; }
+      
       async function runPrediction() {
-        modal.style.display = "block";
-        loadingDiv.style.display = "block";
-        resultDiv.style.display = "none";
+          modal.style.display = "block";
+          loadingDiv.style.display = "block";
+          resultDiv.style.display = "none";
+          try {
+              const res = await fetch("/predict", { method: "POST" });
+              const data = await res.json();
+              loadingDiv.style.display = "none";
+              resultDiv.style.display = "block";
+              
+              if(!data.valid && data.message) {
+                 document.getElementById("pred-decision").innerText = "ERROR";
+                 document.getElementById("pred-decision").style.color = "#ef4444";
+                 document.getElementById("pred-reason").innerText = data.message;
+                 return;
+              }
 
-        try {
-          const res = await fetch("/predict", { method: "POST" });
-          const data = await res.json();
+              const decisionEl = document.getElementById("pred-decision");
+              if (data.decision === "VALID") {
+                  decisionEl.innerHTML = "✅ CALL VALID";
+                  decisionEl.style.color = "#10b981";
+                  document.getElementById("pred-trade-box").style.display = "block";
+              } else {
+                  decisionEl.innerHTML = "🚫 CALL NOT VALID";
+                  decisionEl.style.color = "#ef4444"; // Red
+                  document.getElementById("pred-trade-box").style.display = "none";
+              }
 
-          loadingDiv.style.display = "none";
-          resultDiv.style.display = "block";
+              document.getElementById("pred-reason").innerText = data.reason;
+              document.getElementById("pred-vol").innerText = data.details.volatility;
+              document.getElementById("pred-struct").innerText = data.details.structure;
+              document.getElementById("pred-global").innerText = data.details.global_bias;
 
-          if (!data.valid && data.message) {
-            document.getElementById("pred-decision").innerText = "ERROR";
-            document.getElementById("pred-reason").innerText = data.message;
-            return;
+              if(data.decision === "VALID") {
+                  document.getElementById("pred-dir").innerText = data.direction;
+                  document.getElementById("pred-entry").innerText = data.details.entry;
+                  document.getElementById("pred-sl").innerText = data.details.sl;
+                  document.getElementById("pred-tgt").innerText = data.details.target;
+              }
+          } catch(e) {
+              loadingDiv.style.display = "none";
+              alert("Error: " + e);
           }
-
-          document.getElementById("pred-decision").innerText =
-            data.decision === "VALID" ? "✅ CALL VALID" : "🚫 CALL NOT VALID";
-          document.getElementById("pred-decision").style.color =
-            data.decision === "VALID" ? "#2ecc71" : "#e74c3c";
-
-          document.getElementById("pred-reason").innerText = data.reason;
-          document.getElementById("pred-vol").innerText =
-            data.details.volatility;
-          document.getElementById("pred-struct").innerText =
-            data.details.structure;
-          document.getElementById("pred-global").innerText =
-            data.details.global_bias;
-
-          if (data.decision === "VALID") {
-            document.getElementById("pred-trade-box").style.display = "block";
-            document.getElementById("pred-dir").innerText = data.direction;
-            document.getElementById("pred-entry").innerText =
-              data.details.entry;
-            document.getElementById("pred-sl").innerText = data.details.sl;
-            document.getElementById("pred-tgt").innerText = data.details.target;
-          } else {
-            document.getElementById("pred-trade-box").style.display = "none";
-          }
-        } catch (e) {
-          loadingDiv.style.display = "none";
-          alert("Error running prediction: " + e);
-        }
       }
-
-      // Close modal on click outside
-      window.onclick = function (event) {
-        if (event.target == modal) {
-          modal.style.display = "none";
-        }
-      };
-
-      setInterval(() => {
-        updateStatus();
-        fetchLogs();
-      }, 2000);
-
-      updateStatus();
-      fetchLogs();
+      window.onclick = function(e) { if (e.target == modal) closeModal(); }
+      setInterval(() => { updateStatus(); fetchLogs(); }, 2000);
+      updateStatus(); fetchLogs();
     </script>
   </body>
 </html>
