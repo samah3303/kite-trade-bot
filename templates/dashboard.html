@@ -84,6 +84,42 @@
       <a href="/login" class="btn-login">🔑 LOGIN ZERODHA</a>
       <button class="btn-start" onclick="startBot()">▶ START BOT</button>
       <button class="btn-stop" onclick="stopBot()">⏹ STOP BOT</button>
+      <button class="btn-predict" onclick="runPrediction()">
+        🔮 PREDICT
+      </button>
+    </div>
+
+    <!-- Prediction Modal -->
+    <div id="predict-modal" class="modal">
+      <div class="modal-content">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <h2>Mode F Prediction</h2>
+        <div id="predict-loading">Analyzing Market...</div>
+        <div id="predict-result" style="display: none">
+          <h3 id="pred-decision"></h3>
+          <p><strong>Reason:</strong> <span id="pred-reason"></span></p>
+          <div class="pred-details">
+            <p>Volatility: <span id="pred-vol"></span></p>
+            <p>Structure: <span id="pred-struct"></span></p>
+            <p>Global Bias: <span id="pred-global"></span></p>
+          </div>
+          <div
+            id="pred-trade-box"
+            style="
+              display: none;
+              background: #2c3e50;
+              padding: 10px;
+              border-radius: 5px;
+              margin-top: 10px;
+            "
+          >
+            <p>🚀 <strong>Direction:</strong> <span id="pred-dir"></span></p>
+            <p>🎯 Entry: <span id="pred-entry"></span></p>
+            <p>🛑 Stop: <span id="pred-sl"></span></p>
+            <p>🏁 Target: <span id="pred-tgt"></span></p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <style>
@@ -101,6 +137,45 @@
       .btn-login:hover {
         opacity: 0.8;
       }
+      .btn-predict {
+        background-color: #9b59b6;
+        color: white;
+      }
+      /* Modal Styles */
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0, 0, 0, 0.8);
+      }
+      .modal-content {
+        background-color: #1e1e1e;
+        margin: 15% auto;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 80%;
+        max-width: 500px;
+        border-radius: 10px;
+        text-align: center;
+      }
+      .close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      .close:hover,
+      .close:focus {
+        color: #fff;
+        text-decoration: none;
+        cursor: pointer;
+      }
     </style>
 
     <div id="log-container">Loading logs...</div>
@@ -108,6 +183,9 @@
     <script>
       const statusText = document.getElementById("status-text");
       const logBox = document.getElementById("log-container");
+      const modal = document.getElementById("predict-modal");
+      const loadingDiv = document.getElementById("predict-loading");
+      const resultDiv = document.getElementById("predict-result");
 
       async function updateStatus() {
         try {
@@ -145,6 +223,64 @@
         await fetch("/stop", { method: "POST" });
         setTimeout(updateStatus, 1000);
       }
+
+      function closeModal() {
+        modal.style.display = "none";
+      }
+
+      async function runPrediction() {
+        modal.style.display = "block";
+        loadingDiv.style.display = "block";
+        resultDiv.style.display = "none";
+
+        try {
+          const res = await fetch("/predict", { method: "POST" });
+          const data = await res.json();
+
+          loadingDiv.style.display = "none";
+          resultDiv.style.display = "block";
+
+          if (!data.valid && data.message) {
+            document.getElementById("pred-decision").innerText = "ERROR";
+            document.getElementById("pred-reason").innerText = data.message;
+            return;
+          }
+
+          document.getElementById("pred-decision").innerText =
+            data.decision === "VALID" ? "✅ CALL VALID" : "🚫 CALL NOT VALID";
+          document.getElementById("pred-decision").style.color =
+            data.decision === "VALID" ? "#2ecc71" : "#e74c3c";
+
+          document.getElementById("pred-reason").innerText = data.reason;
+          document.getElementById("pred-vol").innerText =
+            data.details.volatility;
+          document.getElementById("pred-struct").innerText =
+            data.details.structure;
+          document.getElementById("pred-global").innerText =
+            data.details.global_bias;
+
+          if (data.decision === "VALID") {
+            document.getElementById("pred-trade-box").style.display = "block";
+            document.getElementById("pred-dir").innerText = data.direction;
+            document.getElementById("pred-entry").innerText =
+              data.details.entry;
+            document.getElementById("pred-sl").innerText = data.details.sl;
+            document.getElementById("pred-tgt").innerText = data.details.target;
+          } else {
+            document.getElementById("pred-trade-box").style.display = "none";
+          }
+        } catch (e) {
+          loadingDiv.style.display = "none";
+          alert("Error running prediction: " + e);
+        }
+      }
+
+      // Close modal on click outside
+      window.onclick = function (event) {
+        if (event.target == modal) {
+          modal.style.display = "none";
+        }
+      };
 
       setInterval(() => {
         updateStatus();

@@ -26,11 +26,13 @@ END_DATE = datetime.now()
 
 # Instruments to Test
 # Using SPOT INDICES for 1-Year Backtest (Futures contract history is too short)
-INSTRUMENTS = [
-    {"name": "NIFTY", "symbol": "NSE:NIFTY 50", "strat_cls": NiftyStrategy},
-    # BANKNIFTY REMOVED v5.0
-    {"name": "GOLD", "symbol": "MCX:GOLDGUINEA26MARFUT", "strat_cls": GoldStrategy}
-]
+# INSTRUMENTS = [
+#     {"name": "NIFTY", "symbol": "NSE:NIFTY 50", "strat_cls": NiftyStrategy},
+#     # BANKNIFTY REMOVED v5.0
+#     {"name": "GOLD", "symbol": "MCX:GOLDGUINEA26MARFUT", "strat_cls": GoldStrategy}
+# ]
+INSTRUMENTS = [] # Cleared for Mode F verification check
+START_DATE = datetime.now() - timedelta(days=365) # 1 Year Backtest
 
 def fetch_data(token, from_date, to_date, interval):
     """Fetch history with loop for limits if needed"""
@@ -61,6 +63,33 @@ def run_backtest():
     
     all_trades = []
     
+    # Mode F Wrapper
+    class ModeFWrapper:
+        def __init__(self):
+            from mode_f_engine import ModeFEngine
+            self.engine = ModeFEngine()
+            
+        def update_trend_30m(self, c30):
+             # Mode F calculates structure internally per call, doesn't need external trend state persistence 
+             # but we need to match signature
+             return "MODE_F_TREND", 0
+             
+        def analyze_5m(self, c5, t_state, slope, name, global_bias="NEUTRAL"):
+            # Map Unified Backtest loop to Mode F
+            res = self.engine.predict(c5, global_bias=global_bias)
+            if res.valid:
+                return {
+                    "direction": res.direction,
+                    "mode": "MODE_F",
+                    "entry": res.entry,
+                    "sl": res.sl,
+                    "target": res.target,
+                    "pattern": f"{res.struct_state.name} | {res.vol_state.name}"
+                }
+            return None
+
+    INSTRUMENTS.append({"name": "NIFTY_MODE_F", "symbol": "NSE:NIFTY 50", "strat_cls": ModeFWrapper})
+
     for inst in INSTRUMENTS:
         name = inst['name']
         symbol = inst['symbol']
