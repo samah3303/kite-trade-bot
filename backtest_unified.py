@@ -26,12 +26,7 @@ END_DATE = datetime.now()
 
 # Instruments to Test
 # Using SPOT INDICES for 1-Year Backtest (Futures contract history is too short)
-# INSTRUMENTS = [
-#     {"name": "NIFTY", "symbol": "NSE:NIFTY 50", "strat_cls": NiftyStrategy},
-#     # BANKNIFTY REMOVED v5.0
-#     {"name": "GOLD", "symbol": "MCX:GOLDGUINEA26MARFUT", "strat_cls": GoldStrategy}
-# ]
-INSTRUMENTS = [] # Cleared for Mode F verification check
+# Global Config
 START_DATE = datetime.now() - timedelta(days=365) # 1 Year Backtest
 
 def fetch_data(token, from_date, to_date, interval):
@@ -70,12 +65,9 @@ def run_backtest():
             self.engine = ModeFEngine()
             
         def update_trend_30m(self, c30):
-             # Mode F calculates structure internally per call, doesn't need external trend state persistence 
-             # but we need to match signature
              return "MODE_F_TREND", 0
              
         def analyze_5m(self, c5, t_state, slope, name, global_bias="NEUTRAL"):
-            # Map Unified Backtest loop to Mode F
             res = self.engine.predict(c5, global_bias=global_bias)
             if res.valid:
                 return {
@@ -88,7 +80,12 @@ def run_backtest():
                 }
             return None
 
-    INSTRUMENTS.append({"name": "NIFTY_MODE_F", "symbol": "NSE:NIFTY 50", "strat_cls": ModeFWrapper})
+    # Full System Backtest Configuration
+    INSTRUMENTS = [
+        {"name": "NIFTY_UNIFIED", "symbol": "NSE:NIFTY 50", "strat_cls": NiftyStrategy},
+        {"name": "GOLD_GUINEA", "symbol": "MCX:GOLDGUINEA26MARFUT", "strat_cls": GoldStrategy},
+        {"name": "NIFTY_MODE_F",  "symbol": "NSE:NIFTY 50", "strat_cls": ModeFWrapper}
+    ]
 
     for inst in INSTRUMENTS:
         name = inst['name']
@@ -224,11 +221,13 @@ def run_backtest():
                     # Store Result
                     trade_res = {
                         "instrument": name,
-                        "date": curr_time,
+                        "date": curr_time, # Exit Time
+                        "entry_time": active_trade['entry_time'], # Added for Portfolio Sim
                         "mode": active_trade['mode'],
                         "direction": active_trade['direction'],
                         "entry": active_trade['entry'],
                         "exit": exit_price,
+                        "sl": active_trade['sl'], # Added for Risk Calc
                         "pnl": pnl,
                         "reason": exit_reason
                     }

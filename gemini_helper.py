@@ -14,7 +14,7 @@ class GeminiHelper:
     def __init__(self):
         self.enabled = bool(GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_api_key_here")
         if not self.enabled:
-            print("⚠️ GEMINI_API_KEY missing or invalid in .env")
+            print("[WARN] GEMINI_API_KEY missing or invalid in .env")
 
     def analyze_market_sentiment(self, instrument, trend, rsi, atr, pattern, price=0):
         """
@@ -46,6 +46,10 @@ class GeminiHelper:
             }}
             """
 
+            import time
+            max_retries = 3
+            base_delay = 2
+
             payload = {
                 "contents": [{
                     "parts": [{"text": prompt}]
@@ -58,20 +62,34 @@ class GeminiHelper:
             }
             
             headers = {"Content-Type": "application/json"}
-            url = f"{GEMINI_URL}?key={GEMINI_API_KEY}"
+            # Revert to 2.0-flash (was working previously)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
             
-            response = requests.post(url, headers=headers, json=payload, timeout=5)
+            for attempt in range(max_retries):
+                try:
+                    response = requests.post(url, headers=headers, json=payload, timeout=10)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        text = result['candidates'][0]['content']['parts'][0]['text']
+                        text = text.replace('```json', '').replace('```', '').strip()
+                        return json.loads(text)
+                        
+                    elif response.status_code == 429:
+                        print(f"[QUOTA] Gemini 429 (Quota). Retrying in {base_delay}s...")
+                        time.sleep(base_delay)
+                        base_delay *= 2 # Exponential backoff
+                        continue
+                    else:
+                        print(f"[ERROR] Gemini API Error {response.status_code}: {response.text[:200]}")
+                        return None
+                except Exception as req_err:
+                     print(f"[ERROR] Gemini Req Error: {req_err}")
+                     if attempt < max_retries - 1: time.sleep(base_delay); continue
+                     return None
             
-            if response.status_code == 200:
-                result = response.json()
-                text = result['candidates'][0]['content']['parts'][0]['text']
-                # Clean up markdown code blocks if present
-                text = text.replace('```json', '').replace('```', '').strip()
-                return json.loads(text)
-            else:
-                print(f"⚠️ Gemini API Error {response.status_code}: {response.text[:200]}")
-                return None
-                
+            return None
+
         except Exception as e:
             print(f"⚠️ Gemini Connection Failed: {e}")
             return None

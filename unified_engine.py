@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, time as dtime
 from enum import Enum
 from kiteconnect import KiteConnect
 from dotenv import load_dotenv
+from mode_f_engine import ModeFEngine # AUTOMATION
 
 # Gemini AI
 try:
@@ -969,6 +970,9 @@ class UnifiedRunner:
         else:
             self.gmam = None
         
+        # Init Mode F
+        self.mode_f_engine = ModeFEngine()
+        
     def start(self):
         if self.thread and self.thread.is_alive(): return False
         self.stop_event.clear()
@@ -1034,32 +1038,60 @@ class UnifiedRunner:
             # Strategy Specific Calls
             # Strategy Analysis
             # Strategy Analysis
+            # ----------------------------------------------------
+            # SIGNAL COLLECTION
+            # ----------------------------------------------------
+            signals = []
+            
+            # 1. Unified Strategy (A-D / Gold)
             if isinstance(strategy, NiftyStrategy):
                 trend, slope = strategy.update_trend_30m(c30_acc)
-                # Classify Day Type
                 strategy.day_type = strategy.classify_day_type(c30_acc, c5)
                 res = strategy.analyze_5m(c5, trend, slope, instrument, global_bias=global_bias)
+                if res: signals.append(res)
+                
+                # 2. Mode F Strategy (Nifty Only)
+                try:
+                    res_f = self.mode_f_engine.predict(c5, global_bias=global_bias)
+                    if res_f.valid:
+                        # Calc indicators for AI context
+                        closes = [float(x['close']) for x in c5]
+                        highs = [float(x['high']) for x in c5]
+                        lows = [float(x['low']) for x in c5]
+                        real_rsi = calculate_rsi(closes, 14)[-1]
+                        real_atr = calculate_atr(highs, lows, closes, 14)[-1]
+                        
+                        signals.append({
+                            "instrument": instrument,
+                            "mode": "MODE_F",
+                            "direction": res_f.direction,
+                            "entry": res_f.entry, "sl": res_f.sl, "target": res_f.target,
+                            "pattern": f"{res_f.struct_state.name} | {res_f.vol_state.name}",
+                            "time": str(c5[-1]['date']),
+                            "trend_state": "MODE_F_TREND", 
+                            "rsi": real_rsi, "atr": real_atr
+                        })
+                except Exception as e_f:
+                    print(f"⚠️ Mode F Error: {e_f}")
+                    
             elif isinstance(strategy, BankNiftyStrategy):
                 trend, slope = strategy.update_trend_30m(c30_acc)
                 res = strategy.analyze_5m(c5, trend, slope, instrument)
+                if res: signals.append(res)
             else:
                 trend = strategy.update_trend_30m(c30_acc)
-                # GoldStrategy arg fix (it took 4 args in prev code block, needs verify)
-                res = strategy.analyze_5m(c5, trend, 0, instrument) # Passed 0 as slope for now
+                res = strategy.analyze_5m(c5, trend, 0, instrument) 
+                if res: signals.append(res)
                 
-            if res:
+            # ----------------------------------------------------
+            # SIGNAL PROCESSING
+            # ----------------------------------------------------
+            for res in signals:
                 # ENGINE LOGIC: Live vs Closed
-                # The injected candle is the *last* one in c5.
-                # If its timestamp > now - 5min, it's LIVE/FORMING.
-                # Actually, in 'Inject Live Candle' we set date=now.
-                # So if c5[-1]['date'] == now, it's live.
-                
                 is_live_candle = (c5[-1]['date'] == now)
                 
                 if is_live_candle:
                     # ENGINE A: LIVE WATCH
-                    # "Is something forming?"
-                    # Action: WATCH Alert ONLY. No Execution.
                     msg = f"""
 👀 <b>LIVE WATCH ({instrument})</b>
 Potential {res.get('mode')} | {res.get('direction')}
@@ -1071,11 +1103,10 @@ Price: {res.get('entry')}
                     
                 else:
                     # ENGINE B: DECISION
-                    # "Is this allowed to be traded?"
-                    # Action: SIGNAL + AI + Execution
                     msg = f"""
-<b>🔔 {instrument} SIGNAL</b>
-MODE: {res.get('mode')} | TYPE: {res.get('direction')}
+<b>🔔 {res.get('mode')} SIGNAL</b>
+INSTRUMENT: {instrument}
+TYPE: {res.get('direction')}
 ENTRY: {res.get('entry')}
 SL: {res.get('sl'):.1f} | TGT: {res.get('target')}
 PATTERN: {res.get('pattern')}
@@ -1087,8 +1118,6 @@ TIME: {res.get('time')}
                     # Proceed to AI Logic ONLY for confirmed signals
                     threading.Thread(target=send_ai_logic, args=(res, instrument)).start()
             
-            # NOTE: We return last_candle_time of the CLOSED candle to update log state
-            # The 'live' candle is transient.
             return last_candle_time
         except Exception as e:
             print(f"❌ Error processing {instrument}: {e}")
