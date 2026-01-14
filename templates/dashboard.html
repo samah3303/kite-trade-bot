@@ -182,7 +182,50 @@
         border: 1px solid rgba(16, 185, 129, 0.2);
         border-radius: 12px; padding: 20px;
       }
-      
+
+      /* --- MOBILE RESPONSIVENESS --- */
+      @media (max-width: 768px) {
+        body {
+          padding: 20px 10px;
+        }
+        
+        h1 {
+          font-size: 1.8rem;
+          text-align: center;
+        }
+        
+        .subtitle {
+          font-size: 0.75rem;
+          margin-bottom: 30px;
+          text-align: center;
+        }
+        
+        .status-card {
+          width: 100%;
+          justify-content: center;
+          margin-bottom: 30px;
+          padding: 12px 20px;
+        }
+        
+        .controls {
+          flex-direction: column;
+          width: 100%;
+          gap: 15px;
+        }
+        
+        button, .btn-login {
+          width: 100%;
+          justify-content: center;
+          padding: 14px 20px;
+          font-size: 14px;
+        }
+        
+        #log-container {
+          height: 400px;
+          font-size: 11px;
+          padding: 15px;
+        }
+      }
     </style>
   </head>
   <body>
