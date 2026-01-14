@@ -1087,6 +1087,10 @@ class UnifiedRunner:
                 
                 if is_live_candle:
                     # ENGINE A: LIVE WATCH
+                    # User Request: Disable Live Watch for Mode F
+                    if res.get('mode') == "MODE_F":
+                        continue
+
                     msg = f"""
 👀 <b>LIVE WATCH ({instrument})</b>
 Potential {res.get('mode')}
