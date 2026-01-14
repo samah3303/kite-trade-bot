@@ -1064,24 +1064,19 @@ class UnifiedRunner:
                         signals.append({
                             "instrument": instrument,
                             "mode": "MODE_F",
+                            "gear": res_f.gear.name,
+                            "regime": res_f.regime.name,
                             "direction": res_f.direction,
                             "entry": res_f.entry, "sl": res_f.sl, "target": res_f.target,
-                            "pattern": f"{res_f.struct_state.name} | {res_f.vol_state.name}",
+                            "pattern": f"{res_f.gear.name} | {res_f.reason}",
                             "time": str(c5[-1]['date']),
-                            "trend_state": "MODE_F_TREND", 
+                            "trend_state": "MODE_F", 
                             "rsi": real_rsi, "atr": real_atr
                         })
                 except Exception as e_f:
                     print(f"⚠️ Mode F Error: {e_f}")
                     
-            elif isinstance(strategy, BankNiftyStrategy):
-                trend, slope = strategy.update_trend_30m(c30_acc)
-                res = strategy.analyze_5m(c5, trend, slope, instrument)
-                if res: signals.append(res)
-            else:
-                trend = strategy.update_trend_30m(c30_acc)
-                res = strategy.analyze_5m(c5, trend, 0, instrument) 
-                if res: signals.append(res)
+            # (BankNifty/Gold blocks removed/ignored as they are not in inst_list anymore)
                 
             # ----------------------------------------------------
             # SIGNAL PROCESSING
@@ -1094,7 +1089,8 @@ class UnifiedRunner:
                     # ENGINE A: LIVE WATCH
                     msg = f"""
 👀 <b>LIVE WATCH ({instrument})</b>
-Potential {res.get('mode')} | {res.get('direction')}
+Potential {res.get('mode')}
+Direction: {res.get('direction')}
 Price: {res.get('entry')}
 <i>Candle forming...</i>
 """
@@ -1103,6 +1099,7 @@ Price: {res.get('entry')}
                     
                 else:
                     # ENGINE B: DECISION
+                    gear_info = f"GEAR: {res.get('gear')} ({res.get('regime')})" if 'gear' in res else ""
                     msg = f"""
 <b>🔔 {res.get('mode')} SIGNAL</b>
 INSTRUMENT: {instrument}
@@ -1110,6 +1107,7 @@ TYPE: {res.get('direction')}
 ENTRY: {res.get('entry')}
 SL: {res.get('sl'):.1f} | TGT: {res.get('target')}
 PATTERN: {res.get('pattern')}
+{gear_info}
 TIME: {res.get('time')}
 """
                     print(f"🔔 CONFIRMED SIGNAL: {json.dumps(res, default=str)}")
@@ -1133,7 +1131,7 @@ TIME: {res.get('time')}
         self.kite.set_access_token(ACCESS_TOKEN)
         
         # Get Tokens
-        inst_list = [NIFTY_INSTRUMENT, GOLD_INSTRUMENT]
+        inst_list = [NIFTY_INSTRUMENT]
         tokens = {}
         try:
             q = self.kite.quote(inst_list)
@@ -1162,8 +1160,9 @@ TIME: {res.get('time')}
             current_bias = self.gmam.bias.value if (self.gmam and hasattr(self.gmam.bias, 'value')) else "NEUTRAL"
             
             for inst in inst_list:
+                # NIFTY ONLY
                 if inst == NIFTY_INSTRUMENT: strat = self.nifty_strat
-                else: strat = self.gold_strat
+                else: continue
                 
                 last_times[inst] = self.process_instrument(tokens[inst], inst, strat, last_times[inst], global_bias=current_bias)
             

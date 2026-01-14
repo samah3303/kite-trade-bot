@@ -99,60 +99,7 @@ try:
 except ImportError:
     GlobalMarketAnalyzer = None
 
-@app.route('/predict', methods=['POST'])
-def predict_mode_f():
-    # 1. Check Credentials
-    API_KEY = os.getenv("KITE_API_KEY")
-    ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN") # Use updated token
-    
-    if not API_KEY or not ACCESS_TOKEN:
-        return jsonify({"valid": False, "message": "Credentials missing. Login first."})
-        
-    try:
-        # 2. Connect
-        kite = KiteConnect(api_key=API_KEY)
-        kite.set_access_token(ACCESS_TOKEN)
-        
-        # 3. Global Context
-        global_bias = "NEUTRAL"
-        if GlobalMarketAnalyzer:
-            gmam = GlobalMarketAnalyzer()
-            # Fast check? or Full Fetch? Full fetch might take 2-3s
-            gmam.fetch_global_data() 
-            gmam.calculate_bias()
-            global_bias = gmam.bias.value
-            
-        # 4. Nifty Data
-        NIFTY_INSTRUMENT = os.getenv("NIFTY_INSTRUMENT", "NSE:NIFTY 50")
-        q = kite.quote(NIFTY_INSTRUMENT)
-        token = q[NIFTY_INSTRUMENT]['instrument_token']
-        
-        to_date = datetime.now()
-        from_date = to_date - timedelta(days=7)
-        candles = kite.historical_data(token, from_date, to_date, "5minute")
-        
-        # 5. Run Mode F
-        engine = ModeFEngine()
-        res = engine.predict(candles, global_bias=global_bias)
-        
-        return jsonify({
-            "valid": True,
-            "decision": "VALID" if res.valid else "INVALID",
-            "direction": res.direction,
-            "reason": res.reason if not res.valid else res.narrative,
-            "details": {
-                "volatility": res.vol_state.name,
-                "structure": res.struct_state.name,
-                "entry": res.entry,
-                "sl": res.sl,
-                "target": res.target,
-                "global_bias": global_bias
-            }
-        })
-        
-    except Exception as e:
-        return jsonify({"valid": False, "message": f"Error: {str(e)}"})
-
+# /predict endpoint REMOVED for Automated 3-Gear Engine
 if __name__ == "__main__":
     print("starting web server on port 5000")
     app.run(host='0.0.0.0', port=5000)

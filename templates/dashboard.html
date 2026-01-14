@@ -208,44 +208,9 @@
         <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
         Stop Engine
       </button>
-      <button class="btn-predict" onclick="runPrediction()">
-        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 12h20M12 2v20M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"/></svg>
-        Predict
-      </button>
+            <!-- PREDICT BUTTON REMOVED for 3-GEAR AUTOMATION -->
     </div>
 
-    <!-- Prediction Modal -->
-    <div id="predict-modal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeModal()">&times;</span>
-            <h2>NIFTY PREDICTIVE ENGINE</h2>
-            <div id="predict-loading" style="color: #94a3b8;">
-                <svg style="animation: spin 1s linear infinite; margin-bottom: 10px;" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
-                <br>Scanning Market Structure...
-            </div>
-            <div id="predict-result" style="display:none;">
-                <div id="pred-decision"></div>
-                <p style="color:#cbd5e1; font-size: 1.1rem;">Reason: <span id="pred-reason" style="color:#fff;"></span></p>
-                
-                <div class="pred-details">
-                    <p>Volatility <span id="pred-vol">--</span></p>
-                    <p>Structure <span id="pred-struct">--</span></p>
-                    <p>Global Bias <span id="pred-global">--</span></p>
-                </div>
-                
-                <div id="pred-trade-box" style="display:none;">
-                    <div style="font-size: 1.2rem; font-weight: 800; margin-bottom: 10px; color: #10b981;">
-                        <span id="pred-dir"></span> SIGNAL
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-family: monospace; font-size: 1.1rem;">
-                        <div>@ <span id="pred-entry"></span></div>
-                        <div style="color: #ef4444;">SL: <span id="pred-sl"></span></div>
-                        <div style="color: #10b981;">TGT: <span id="pred-tgt"></span></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
     
     <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
 
