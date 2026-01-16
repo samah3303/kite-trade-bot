@@ -19,15 +19,15 @@ kite = KiteConnect(api_key=api_key)
 kite.set_access_token(access_token)
 
 # Configuration
-CAPITAL = 100000.0
+CAPITAL = 1000000.0
 RISK_PER_TRADE_PCT = 0.02 # 2% per trade
-START_DATE = datetime.now() - timedelta(days=365)
-END_DATE = datetime.now()
+START_DATE = datetime(2022, 1, 1)
+END_DATE = datetime(2023, 1, 1)
 
 # Instruments to Test
 # Using SPOT INDICES for 1-Year Backtest (Futures contract history is too short)
 # Global Config
-START_DATE = datetime.now() - timedelta(days=365) # 1 Year Backtest
+# START_DATE handled above
 
 def fetch_data(token, from_date, to_date, interval):
     """Fetch history with loop for limits if needed"""
@@ -53,8 +53,8 @@ def fetch_data(token, from_date, to_date, interval):
         return pd.DataFrame()
 
 def run_backtest():
-    print(f"🚀 STARTING BACKTEST (Capital: ₹{CAPITAL:,.0f})")
-    print(f"📅 Period: {START_DATE.date()} to {END_DATE.date()}\n")
+    print(f"STARTING BACKTEST (Capital: Rs.{CAPITAL:,.0f})")
+    print(f"Period: {START_DATE.date()} to {END_DATE.date()}\n")
     
     all_trades = []
     
@@ -86,7 +86,7 @@ def run_backtest():
 
     # Full System Backtest Configuration
     INSTRUMENTS = [
-        # {"name": "NIFTY_UNIFIED", "symbol": "NSE:NIFTY 50", "strat_cls": NiftyStrategy}, # Legacy Disabled
+        {"name": "NIFTY_UNIFIED", "symbol": "NSE:NIFTY 50", "strat_cls": NiftyStrategy},
         {"name": "NIFTY_MODE_F_3GEAR",  "symbol": "NSE:NIFTY 50", "strat_cls": ModeFWrapper}
     ]
 
@@ -95,14 +95,14 @@ def run_backtest():
         symbol = inst['symbol']
         strat = inst['strat_cls']()
         
-        print(f"🔄 Processing {name} ({symbol})...")
+        print(f"Processing {name} ({symbol})...")
         
         # 1. Get Token
         try:
             q = kite.quote(symbol)
             token = q[symbol]['instrument_token']
         except:
-            print(f"   ⚠️ Could not fetch token for {symbol}. Skipping.")
+            print(f"   Could not fetch token for {symbol}. Skipping.")
             continue
             
         # 2. Fetch Data
@@ -114,12 +114,12 @@ def run_backtest():
         # to prevent look-ahead bias, or fetch both and align timestamps.
         # Simplest consistent way: Fetch 5min, resample to 30min.
         
-        print("   ⏳ Fetching historical data...")
+        print("   Fetching historical data...")
         df_5m = fetch_data(token, START_DATE, END_DATE, "5minute")
         if df_5m.empty:
-            print("   ⚠️ No data found.")
+            print("   No data found.")
             continue
-        print(f"   ✅ Fetched {len(df_5m)} candles.")
+        print(f"   Fetched {len(df_5m)} candles.")
             
         df_5m['date'] = pd.to_datetime(df_5m['date'])
         df_5m.set_index('date', inplace=True)
@@ -130,17 +130,17 @@ def run_backtest():
         
         # Convert to list of dicts for Strategy
         def to_dicts(df):
-            return [{'date': i, 'open': r.open, 'high': r.high, 'low': r.low, 'close': r.close} for i, r in df.iterrows()]
+            return [{'date': r['date'] if 'date' in r else i, 'open': r.open, 'high': r.high, 'low': r.low, 'close': r.close} for i, r in df.iterrows()]
             
         candles_5m = to_dicts(df_5m)
         
         # Need 30m context for Unified
         df_30m = fetch_data(token, START_DATE, END_DATE, "30minute")
         if df_30m.empty:
-            print("   ⚠️ 30m data missing, checking Unified validity...")
+            print("   30m data missing, checking Unified validity...")
             
-        df_5m['date'] = pd.to_datetime(df_5m['date'])
-        df_5m.set_index('date', inplace=True)
+        df_30m['date'] = pd.to_datetime(df_30m['date'])
+        df_30m.set_index('date', inplace=True)
         
         # Resample to 30m for Trend
         # df_30m = df_5m.resample('30min').agg({
@@ -212,6 +212,7 @@ def run_backtest():
                         "date": curr_time, # Exit Time
                         "entry_time": active_trade['entry_time'],
                         "mode": active_trade['mode'],
+                        "gear": active_trade.get('gear', 'N/A'),
                         "direction": active_trade['direction'],
                         "entry": active_trade['entry'],
                         "exit": exit_price,
@@ -241,6 +242,8 @@ def run_backtest():
                         active_trade = {
                             "direction": sig['direction'],
                             "mode": sig['mode'],
+                            "gear": sig.get('gear', 'N/A'),
+                            "regime": sig.get('regime', 'N/A'),
                             "entry": entry,
                             "sl": sl,
                             "target": sig['target'],
@@ -251,7 +254,7 @@ def run_backtest():
     # ----------------------------------------------
     # REPORT GENERATION
     # ----------------------------------------------
-    print("\n✅ RAW SIGNAL GENERATION COMPLETE.")
+    print("\nRAW SIGNAL GENERATION COMPLETE.")
 
     if not all_trades:
         print("No trades generated.")
@@ -263,90 +266,123 @@ def run_backtest():
     df_res['date'] = pd.to_datetime(df_res['date']) # Exit time
     
     # ----------------------------------------------
-    # 1. PARALLEL MODE (Theoretical Max)
+    # DEFINE SIMULATION FUNCTION
     # ----------------------------------------------
-    print("\n" + "="*50)
-    print("📊 1. PARALLEL MODE (Theoretical Max - Unlimited Capital)")
-    print("="*50)
-    total_pnl = df_res['pnl'].sum()
-    print(f"Total Net PnL:    ₹{total_pnl:,.2f} ({(total_pnl/CAPITAL)*100:.1f}%)")
-    print(f"Total Trades:     {len(df_res)}")
+    def run_simulation(trades_subset, title):
+        if len(trades_subset) == 0:
+            print(f"\n--- {title} ---")
+            print("No trades found.")
+            return None
+
+        print(f"\n" + "="*50)
+        print(f"SIMULATION: {title} (1 Trade at a Time)")
+        print("="*50)
+        
+        # Sort by Entry Time
+        df_sim = trades_subset.sort_values(by='entry_time').copy()
+        
+        curr_cap = CAPITAL
+        # Safe min date
+        first_tz = df_sim['entry_time'].iloc[0].tz
+        busy_until = pd.Timestamp("2020-01-01").tz_localize(first_tz)
+        
+        sim_trades = []
+        skipped_count = 0
+        
+        for idx, row in df_sim.iterrows():
+            if row['entry_time'] < busy_until:
+                skipped_count += 1
+                continue
+                
+            entry = row['entry']
+            sl = row['sl']
+            risk = abs(entry - sl)
+            
+            if risk <= 0: continue
+            
+            risk_amt = curr_cap * RISK_PER_TRADE_PCT
+            new_qty = int(risk_amt / risk)
+            if new_qty < 1: new_qty = 1
+            
+            if row['direction'] == "BUY":
+                unit_pnl = row['exit'] - row['entry']
+            else:
+                unit_pnl = row['entry'] - row['exit']
+                
+            real_pnl = unit_pnl * new_qty
+            curr_cap += real_pnl
+            busy_until = row['date']
+            
+            sim_trades.append({
+                "entry": row['entry_time'],
+                "exit": row['date'],
+                "pnl": real_pnl,
+                "cap": curr_cap,
+                "mode": row['mode'],
+                "gear": row.get('gear', 'N/A')
+            })
+            
+        final_cap = curr_cap
+        net_pnl = final_cap - CAPITAL
+        ret = (net_pnl / CAPITAL) * 100
+        
+        print(f"Starting Capital: Rs.{CAPITAL:,.2f}")
+        print(f"Ending Capital:   Rs.{final_cap:,.2f}")
+        print(f"Net PnL:          Rs.{net_pnl:,.2f} ({ret:.1f}%)")
+        print(f"Trades Taken:     {len(sim_trades)}")
+        print(f"Trades Skipped:   {skipped_count}")
+        
+        return pd.DataFrame(sim_trades)
 
     # ----------------------------------------------
-    # 2. PORTFOLIO SIMULATION (Actual Constraint)
+    # RUN COMBINED SIMULATION (Start Fresh logic)
     # ----------------------------------------------
-    print("\n" + "="*50)
-    print("💼 2. PORTFOLIO SIMULATION (Dynamic Capital | 1 Trade at Time)")
-    print("="*50)
     
-    # Sort by Entry Time to process chronologically
-    df_sim = df_res.sort_values(by='entry_time').copy()
+    # 1. Filter out Gear 2/3 from Mode F
+    # We want ALL modes, but for Mode F, strictly ONLY Gear 1.
+    print(f"\nAPPLYING FILTERS:")
+    print(f" - Removing Mode F Gear 2 (Rotation)")
+    print(f" - Removing Mode F Gear 3 (Momentum)")
     
-    curr_cap = CAPITAL
-    busy_until = pd.Timestamp.min.tz_localize(df_res['entry_time'].iloc[0].tz) # Initialize context aware
+    mask_exclude = (df_res['mode'] == 'MODE_F') & (df_res['gear'].isin(['GEAR_2_ROTATION', 'GEAR_3_MOMENTUM']))
+    df_filtered = df_res[~mask_exclude].copy()
     
-    sim_trades = []
-    skipped_count = 0
+    print(f" - Trades before filter: {len(df_res)}")
+    print(f" - Trades after filter:  {len(df_filtered)}")
     
-    for idx, row in df_sim.iterrows():
-        # Check Availability
-        if row['entry_time'] < busy_until:
-            skipped_count += 1
-            continue
-            
-        # Take Trade
-        # Recalculate Qty based on Dynamic Capital?
-        # Note: 'pnl' in row is based on fixed start capital. We must adjust.
-        # But 'qty' was calc based on 2% of Fixed Capital in the loops above.
-        # To be purely dynamic, we should recalc Qty. 
-        # Risk = |Entry - SL|
-        # Qty = (CurrCap * 0.02) / Risk
-        
-        entry = row['entry']
-        sl = row['sl']
-        risk = abs(entry - sl)
-        
-        if risk <= 0: continue
-        
-        risk_amt = curr_cap * RISK_PER_TRADE_PCT
-        new_qty = int(risk_amt / risk)
-        if new_qty < 1: new_qty = 1
-        
-        # Recalc PnL
-        raw_pnl_per_qty = (row['pnl'] / ((CAPITAL * RISK_PER_TRADE_PCT)/risk)) # Approx unit pnl? 
-        # Easier: 
-        if row['direction'] == "BUY":
-            unit_pnl = row['exit'] - row['entry']
-        else:
-            unit_pnl = row['entry'] - row['exit']
-            
-        real_pnl = unit_pnl * new_qty
-        
-        # Commit
-        curr_cap += real_pnl
-        busy_until = row['date'] # Exit time
-        
-        sim_trades.append({
-            "entry": row['entry_time'],
-            "exit": row['date'],
-            "pnl": real_pnl,
-            "cap": curr_cap,
-            "mode": row['mode']
-        })
-        
-    final_cap_sim = curr_cap
-    net_pnl_sim = final_cap_sim - CAPITAL
-    ret_sim = (net_pnl_sim / CAPITAL) * 100
+    # 2. Run Combined Portfolio Simulation
+    sim_df = run_simulation(df_filtered, "COMBINED PORTFOLIO (No Gear 2/3)")
     
-    print(f"Starting Capital: ₹{CAPITAL:,.2f}")
-    print(f"Ending Capital:   ₹{final_cap_sim:,.2f}")
-    print(f"Net PnL:          ₹{net_pnl_sim:,.2f} ({ret_sim:.1f}%)")
-    print(f"Trades Taken:     {len(sim_trades)}")
-    print(f"Trades Skipped:   {skipped_count} (Busy / Overlap)")
-    
+    # 3. Detailed Reporting
+    if sim_df is not None and not sim_df.empty:
+        sim_df['month'] = sim_df['entry'].dt.to_period('M')
+
+        # A. Month-by-Month
+        print("\nMONTHLY PERFORMANCE (Dynamic)")
+        monthly_sim = sim_df.groupby('month').agg(
+            trades=('pnl', 'count'),
+            wins=('pnl', lambda x: (x > 0).sum()),
+            losses=('pnl', lambda x: (x <= 0).sum()),
+            pnl=('pnl', 'sum')
+        )
+        monthly_sim['win_rate'] = (monthly_sim['wins'] / monthly_sim['trades'] * 100).round(1)
+        print(monthly_sim)
+        
+        # B. Mode-by-Mode
+        print("\nMODE PERFORMANCE (Dynamic)")
+        mode_sim = sim_df.groupby('mode').agg(
+            trades=('pnl', 'count'),
+            wins=('pnl', lambda x: (x > 0).sum()),
+            losses=('pnl', lambda x: (x <= 0).sum()),
+            pnl=('pnl', 'sum')
+        )
+        mode_sim['win_rate'] = (mode_sim['wins'] / mode_sim['trades'] * 100).round(1)
+        print(mode_sim)
+
     # Save Sim Report
-    pd.DataFrame(sim_trades).to_csv("portfolio_sim_results.csv", index=False)
-    print("\n✅ Simulation Complete.")
+    if sim_df is not None:
+        sim_df.to_csv("portfolio_sim_results.csv", index=False)
+    print("\nSimulation Complete.")
 
 if __name__ == "__main__":
     run_backtest()

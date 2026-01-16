@@ -46,8 +46,8 @@ class GlobalMarketAnalyzer:
         if current_time is None:
             current_time = datetime.now(self.ist).time()
         
-        # Check if it's 12:30 or 12:45 IST
-        trigger_times = [time(12, 30), time(12, 45)]
+        # Check if it's 9:15, 12:30 or 12:45 IST
+        trigger_times = [time(9, 15), time(12, 30), time(12, 45)]
         
         for trigger_time in trigger_times:
             # Allow 5-minute window for each trigger

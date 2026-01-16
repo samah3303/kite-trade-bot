@@ -196,7 +196,7 @@ class NiftyStrategy:
             self.opening_range_high = None
             self.opening_range_low = None
             self.day_type = "UNKNOWN"
-            print(f"🔄 NIFTY DAILY RESET: {self.last_trade_day}")
+            print(f"NIFTY DAILY RESET: {self.last_trade_day}")
 
     def update_trend_30m(self, c30):
         try:
@@ -1007,13 +1007,13 @@ class UnifiedRunner:
                 }
                 c5.append(live_candle)
             except Exception as e:
-                print(f"⚠️ Live Data Error: {e}")
+                print(f"Live Data Error: {e}")
             
             last_candle_time = c5[-2]['date'] # Use completed candle for 'last_processed' tracking only for logging
             
             # Log only on new candle closure
             if last_processed != last_candle_time:
-                 print(f"⚡ [{os.getpid()}] [{instrument}] New Candle Closed: {last_candle_time}")
+                 print(f"[{os.getpid()}] [{instrument}] New Candle Closed: {last_candle_time}")
             
             # Remove blocking check - ANALYZE ALWAYS
             # if last_processed == last_candle_time: return last_processed
@@ -1074,7 +1074,7 @@ class UnifiedRunner:
                             "rsi": real_rsi, "atr": real_atr
                         })
                 except Exception as e_f:
-                    print(f"⚠️ Mode F Error: {e_f}")
+                    print(f"Mode F Error: {e_f}")
                     
             # (BankNifty/Gold blocks removed/ignored as they are not in inst_list anymore)
                 
@@ -1092,20 +1092,20 @@ class UnifiedRunner:
                         continue
 
                     msg = f"""
-👀 <b>LIVE WATCH ({instrument})</b>
+INFO: LIVE WATCH ({instrument})
 Potential {res.get('mode')}
 Direction: {res.get('direction')}
 Price: {res.get('entry')}
-<i>Candle forming...</i>
+Candle forming...
 """
-                    print(f"👀 LIVE WATCH: {res.get('mode')} on {instrument}")
+                    print(f"LIVE WATCH: {res.get('mode')} on {instrument}")
                     send_telegram_message(msg.strip())
                     
                 else:
                     # ENGINE B: DECISION
                     gear_info = f"GEAR: {res.get('gear')} ({res.get('regime')})" if 'gear' in res else ""
                     msg = f"""
-<b>🔔 {res.get('mode')} SIGNAL</b>
+SIGNAL: {res.get('mode')} SIGNAL
 INSTRUMENT: {instrument}
 TYPE: {res.get('direction')}
 ENTRY: {res.get('entry')}
@@ -1114,7 +1114,7 @@ PATTERN: {res.get('pattern')}
 {gear_info}
 TIME: {res.get('time')}
 """
-                    print(f"🔔 CONFIRMED SIGNAL: {json.dumps(res, default=str)}")
+                    print(f"CONFIRMED SIGNAL: {json.dumps(res, default=str)}")
                     send_telegram_message(msg.strip())
 
                     # Proceed to AI Logic ONLY for confirmed signals
@@ -1122,14 +1122,15 @@ TIME: {res.get('time')}
             
             return last_candle_time
         except Exception as e:
-            print(f"❌ Error processing {instrument}: {e}")
+            print(f"Error processing {instrument}: {e}")
             return last_processed
 
 # Helper function for AI logic (Global)
     def run_loop(self):
         print("🚀 UNIFIED ENGINE STARTED")
+        print("✅ Active Strategies: [Unified (Modes A-D), Mode F (3-Gear)]")
         if not API_KEY or not ACCESS_TOKEN:
-             print("❌ Error: Missing API_KEY/ACCESS_TOKEN"); return
+             print("Error: Missing API_KEY/ACCESS_TOKEN"); return
 
         self.kite = KiteConnect(api_key=API_KEY)
         self.kite.set_access_token(ACCESS_TOKEN)
@@ -1142,7 +1143,7 @@ TIME: {res.get('time')}
             for i in inst_list:
                 tokens[i] = q[i]['instrument_token']
         except Exception as e:
-            print(f"❌ Token Fetch Error: {e}"); return
+            print(f"Token Fetch Error: {e}"); return
             
         last_times = {i: None for i in inst_list}
 
@@ -1159,7 +1160,7 @@ TIME: {res.get('time')}
                         msg = self.gmam.format_telegram_alert()
                         send_telegram_message(msg)
                 except Exception as e:
-                    print(f"⚠️ GMAM Error: {e}")
+                    print(f"GMAM Error: {e}")
 
             current_bias = self.gmam.bias.value if (self.gmam and hasattr(self.gmam.bias, 'value')) else "NEUTRAL"
             
@@ -1188,14 +1189,14 @@ def send_ai_logic(res_data, instr_name):
             )
             if ai_data:
                     score = ai_data.get('confidence_score', 5)
-                    stars = "⚡" * score
+                    stars = "*" * score
                     risk = ai_data.get('risk_level', 'Medium')
-                    risk_emoji = "🟢" if risk == "Low" else "🟡" if risk == "Medium" else "🔴"
+                    risk_emoji = "L" if risk == "Low" else "M" if risk == "Medium" else "H"
                     ai_msg = f"""
-🤖 <b>AI Risk Check ({instr_name})</b>
+AI Risk Check ({instr_name})
 Confidence: {stars} ({score}/10)
-Risk: {risk_emoji} {risk} | Action: <b>{ai_data.get('action')}</b>
-<i>"{ai_data.get('insight')}"</i>"""
+Risk: {risk_emoji} {risk} | Action: {ai_data.get('action')}
+"{ai_data.get('insight')}" """
                     send_telegram_message(ai_msg.strip())
 
         # CASE 2: EXIT SIGNAL
@@ -1214,17 +1215,17 @@ Risk: {risk_emoji} {risk} | Action: <b>{ai_data.get('action')}</b>
             )
             
             if ai_exit:
-                    verdict_emoji = "✅" if ai_exit.get('verdict') == 'Good Exit' else "⚠️"
+                    verdict_emoji = "OK" if ai_exit.get('verdict') == 'Good Exit' else "BAD"
                     exit_msg = f"""
-🤖 <b>AI Post-Trade Review</b>
-Result: <b>{res_data.get('exit_type')}</b> | Verdict: {verdict_emoji} <b>{ai_exit.get('verdict')}</b>
-Reason: <i>{ai_exit.get('reason')}</i>
-Lesson: <i>{ai_exit.get('lesson')}</i>
+AI Post-Trade Review
+Result: {res_data.get('exit_type')} | Verdict: {verdict_emoji} {ai_exit.get('verdict')}
+Reason: {ai_exit.get('reason')}
+Lesson: {ai_exit.get('lesson')}
 """
                     send_telegram_message(exit_msg.strip())
 
     except Exception as ex:
-        print(f"⚠️ AI Thread Error: {ex}")
+        print(f"AI Thread Error: {ex}")
 
 # Global Instance
 runner = UnifiedRunner()
