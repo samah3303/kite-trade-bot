@@ -21,8 +21,8 @@ kite.set_access_token(access_token)
 # Configuration
 CAPITAL = 1000000.0
 RISK_PER_TRADE_PCT = 0.02 # 2% per trade
-START_DATE = datetime(2022, 1, 1)
-END_DATE = datetime(2023, 1, 1)
+START_DATE = datetime(2026, 1, 1)
+END_DATE = datetime(2026, 1, 20)
 
 # Instruments to Test
 # Using SPOT INDICES for 1-Year Backtest (Futures contract history is too short)
@@ -278,22 +278,13 @@ def run_backtest():
         print(f"SIMULATION: {title} (1 Trade at a Time)")
         print("="*50)
         
+        curr_cap = CAPITAL
+        sim_trades = []
+        
         # Sort by Entry Time
         df_sim = trades_subset.sort_values(by='entry_time').copy()
         
-        curr_cap = CAPITAL
-        # Safe min date
-        first_tz = df_sim['entry_time'].iloc[0].tz
-        busy_until = pd.Timestamp("2020-01-01").tz_localize(first_tz)
-        
-        sim_trades = []
-        skipped_count = 0
-        
         for idx, row in df_sim.iterrows():
-            if row['entry_time'] < busy_until:
-                skipped_count += 1
-                continue
-                
             entry = row['entry']
             sl = row['sl']
             risk = abs(entry - sl)
@@ -311,7 +302,6 @@ def run_backtest():
                 
             real_pnl = unit_pnl * new_qty
             curr_cap += real_pnl
-            busy_until = row['date']
             
             sim_trades.append({
                 "entry": row['entry_time'],
@@ -330,7 +320,6 @@ def run_backtest():
         print(f"Ending Capital:   Rs.{final_cap:,.2f}")
         print(f"Net PnL:          Rs.{net_pnl:,.2f} ({ret:.1f}%)")
         print(f"Trades Taken:     {len(sim_trades)}")
-        print(f"Trades Skipped:   {skipped_count}")
         
         return pd.DataFrame(sim_trades)
 
@@ -338,17 +327,10 @@ def run_backtest():
     # RUN COMBINED SIMULATION (Start Fresh logic)
     # ----------------------------------------------
     
-    # 1. Filter out Gear 2/3 from Mode F
-    # We want ALL modes, but for Mode F, strictly ONLY Gear 1.
-    print(f"\nAPPLYING FILTERS:")
-    print(f" - Removing Mode F Gear 2 (Rotation)")
-    print(f" - Removing Mode F Gear 3 (Momentum)")
+    # 1. Use All trades
+    df_filtered = df_res.copy()
     
-    mask_exclude = (df_res['mode'] == 'MODE_F') & (df_res['gear'].isin(['GEAR_2_ROTATION', 'GEAR_3_MOMENTUM']))
-    df_filtered = df_res[~mask_exclude].copy()
-    
-    print(f" - Trades before filter: {len(df_res)}")
-    print(f" - Trades after filter:  {len(df_filtered)}")
+    print(f" - Total trades for simulation: {len(df_filtered)}")
     
     # 2. Run Combined Portfolio Simulation
     sim_df = run_simulation(df_filtered, "COMBINED PORTFOLIO (No Gear 2/3)")
@@ -378,6 +360,19 @@ def run_backtest():
         )
         mode_sim['win_rate'] = (mode_sim['wins'] / mode_sim['trades'] * 100).round(1)
         print(mode_sim)
+
+        # C. Daily Breakdown
+        print("\nDAILY PERFORMANCE (Dynamic)")
+        sim_df['day'] = sim_df['entry'].dt.date
+        daily_sim = sim_df.groupby('day').agg(
+            trades=('pnl', 'count'),
+            wins=('pnl', lambda x: (x > 0).sum()),
+            losses=('pnl', lambda x: (x <= 0).sum()),
+            pnl=('pnl', 'sum'),
+            ending_cap=('cap', 'last')
+        )
+        daily_sim['win_rate'] = (daily_sim['wins'] / daily_sim['trades'] * 100).round(1)
+        print(daily_sim)
 
     # Save Sim Report
     if sim_df is not None:

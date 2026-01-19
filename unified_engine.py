@@ -1037,75 +1037,36 @@ class UnifiedRunner:
             # Strategy Specific Calls
             # Strategy Specific Calls
             # Strategy Analysis
-            # Strategy Analysis
             # ----------------------------------------------------
-            # SIGNAL COLLECTION
+            # PASS 1: CONFIRMED ANALYSIS (Last CLOSED candle)
             # ----------------------------------------------------
-            signals = []
+            c5_closed = c5[:-1] # Remove the live LTP candle we just added
+            c30_acc = self.resample_to_30m(c5_closed)
             
-            # 1. Unified Strategy (A-D / Gold)
-            if isinstance(strategy, NiftyStrategy):
+            confirmed_signals = []
+            if isinstance(strategy, NiftyStrategy) and len(c5_closed) >= 30:
                 trend, slope = strategy.update_trend_30m(c30_acc)
-                strategy.day_type = strategy.classify_day_type(c30_acc, c5)
-                res = strategy.analyze_5m(c5, trend, slope, instrument, global_bias=global_bias)
-                if res: signals.append(res)
+                strategy.day_type = strategy.classify_day_type(c30_acc, c5_closed)
                 
-                # 2. Mode F Strategy (Nifty Only)
+                # Check Unified Confirmed
+                res_u = strategy.analyze_5m(c5_closed, trend, slope, instrument, global_bias=global_bias)
+                if res_u: confirmed_signals.append(res_u)
+                
+                # Check Mode F Confirmed
                 try:
-                    res_f = self.mode_f_engine.predict(c5, global_bias=global_bias)
+                    res_f = self.mode_f_engine.predict(c5_closed, global_bias=global_bias)
                     if res_f.valid:
-                        # Calc indicators for AI context
-                        closes = [float(x['close']) for x in c5]
-                        highs = [float(x['high']) for x in c5]
-                        lows = [float(x['low']) for x in c5]
-                        real_rsi = calculate_rsi(closes, 14)[-1]
-                        real_atr = calculate_atr(highs, lows, closes, 14)[-1]
-                        
-                        signals.append({
-                            "instrument": instrument,
-                            "mode": "MODE_F",
-                            "gear": res_f.gear.name,
-                            "regime": res_f.regime.name,
-                            "direction": res_f.direction,
-                            "entry": res_f.entry, "sl": res_f.sl, "target": res_f.target,
-                            "pattern": f"{res_f.gear.name} | {res_f.reason}",
-                            "time": str(c5[-1]['date']),
-                            "trend_state": "MODE_F", 
-                            "rsi": real_rsi, "atr": real_atr
-                        })
-                except Exception as e_f:
-                    print(f"Mode F Error: {e_f}")
-                    
-            # (BankNifty/Gold blocks removed/ignored as they are not in inst_list anymore)
-                
-            # ----------------------------------------------------
-            # SIGNAL PROCESSING
-            # ----------------------------------------------------
-            for res in signals:
-                # ENGINE LOGIC: Live vs Closed
-                is_live_candle = (c5[-1]['date'] == now)
-                
-                if is_live_candle:
-                    # ENGINE A: LIVE WATCH
-                    # User Request: Disable Live Watch for Mode F
-                    if res.get('mode') == "MODE_F":
-                        continue
+                        confirmed_signals.append(self.format_mode_f_signal(res_f, instrument, c5_closed[-1]['date'], c5_closed))
+                except Exception as e:
+                    print(f"Mode F Pass 1 Error: {e}")
 
-                    msg = f"""
-INFO: LIVE WATCH ({instrument})
-Potential {res.get('mode')}
-Direction: {res.get('direction')}
-Price: {res.get('entry')}
-Candle forming...
-"""
-                    print(f"LIVE WATCH: {res.get('mode')} on {instrument}")
-                    send_telegram_message(msg.strip())
-                    
-                else:
-                    # ENGINE B: DECISION
+            # Process Confirmed Alerts
+            last_candle_time = c5_closed[-1]['date']
+            if last_processed != last_candle_time:
+                for res in confirmed_signals:
                     gear_info = f"GEAR: {res.get('gear')} ({res.get('regime')})" if 'gear' in res else ""
                     msg = f"""
-SIGNAL: {res.get('mode')} SIGNAL
+<b>🔔 CONFIRMED SIGNAL: {res.get('mode')}</b>
 INSTRUMENT: {instrument}
 TYPE: {res.get('direction')}
 ENTRY: {res.get('entry')}
@@ -1114,16 +1075,80 @@ PATTERN: {res.get('pattern')}
 {gear_info}
 TIME: {res.get('time')}
 """
-                    print(f"CONFIRMED SIGNAL: {json.dumps(res, default=str)}")
+                    print(f"CONFIRMED ALERT: {res.get('mode')} on {instrument}")
                     send_telegram_message(msg.strip())
-
-                    # Proceed to AI Logic ONLY for confirmed signals
                     threading.Thread(target=send_ai_logic, args=(res, instrument)).start()
-            
+                
+            # ----------------------------------------------------
+            # PASS 2: LIVE WATCH (Current forming candle)
+            # ----------------------------------------------------
+            # We already have c5 (with live candle) and c30_acc (from closed)
+            # For live watch, we can reuse trend/bias from closed pass
+            live_signals = []
+            if isinstance(strategy, NiftyStrategy) and len(c5) >= 30:
+                # Nifty Live Watch
+                res_l = strategy.analyze_5m(c5, trend, slope, instrument, global_bias=global_bias)
+                if res_l:
+                    # User Request: Disable Live Watch for Mode F
+                    if res_l.get('mode') != "MODE_F":
+                        live_signals.append(res_l)
+
+            # Process Live Watch Alerts
+            for res in live_signals:
+                msg = f"""
+ℹ️ <b>LIVE WATCH ({instrument})</b>
+Potential {res.get('mode')}
+Direction: {res.get('direction')}
+Price: {res.get('entry')}
+Candle forming... (Wait for close)
+"""
+                print(f"LIVE WATCH: {res.get('mode')} on {instrument}")
+                send_telegram_message(msg.strip())
+
             return last_candle_time
         except Exception as e:
+            traceback.print_exc()
             print(f"Error processing {instrument}: {e}")
             return last_processed
+
+    # Helper to clean up process_instrument
+    def resample_to_30m(self, c5):
+        c30_acc = []
+        curr_30 = None
+        for c in c5:
+            dt = c['date']
+            if dt.minute % 30 == 0 and dt.second == 0:
+                if curr_30: c30_acc.append(curr_30)
+                curr_30 = c.copy()
+            else:
+                if curr_30:
+                    curr_30['high'] = max(curr_30['high'], c['high'])
+                    curr_30['low'] = min(curr_30['low'], c['low'])
+                    curr_30['close'] = c['close']
+                    curr_30['volume'] += c['volume']
+                else: curr_30 = c.copy()
+        if curr_30: c30_acc.append(curr_30)
+        return c30_acc
+
+    def format_mode_f_signal(self, res_f, instrument, date, c5):
+        closes = [float(x['close']) for x in c5]
+        highs = [float(x['high']) for x in c5]
+        lows = [float(x['low']) for x in c5]
+        real_rsi = calculate_rsi(closes, 14)[-1]
+        real_atr = calculate_atr(highs, lows, closes, 14)[-1]
+        
+        return {
+            "instrument": instrument,
+            "mode": "MODE_F",
+            "gear": res_f.gear.name,
+            "regime": res_f.regime.name,
+            "direction": res_f.direction,
+            "entry": res_f.entry, "sl": res_f.sl, "target": res_f.target,
+            "pattern": f"{res_f.gear.name} | {res_f.reason}",
+            "time": str(date),
+            "trend_state": "MODE_F", 
+            "rsi": real_rsi, "atr": real_atr
+        }
 
 # Helper function for AI logic (Global)
     def run_loop(self):
