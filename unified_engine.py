@@ -12,6 +12,7 @@ from enum import Enum
 from kiteconnect import KiteConnect
 from dotenv import load_dotenv
 from mode_f_engine import ModeFEngine # AUTOMATION
+from mode_s_engine import ModeSEngine # SENSEX
 
 # Gemini AI
 try:
@@ -48,6 +49,7 @@ TG_BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 NIFTY_INSTRUMENT = os.getenv("NIFTY_INSTRUMENT", "NFO:NIFTY26JANFUT")
 # BANKNIFTY REMOVED
 GOLD_INSTRUMENT = "MCX:GOLDGUINEA26MARFUT"
+SENSEX_INSTRUMENT = os.getenv("SENSEX_INSTRUMENT", "BSE:SENSEX") # Index Reference
 
 # -------------------------------------------------------------------
 # Data Models and Utils
@@ -973,6 +975,12 @@ class UnifiedRunner:
         # Init Mode F
         self.mode_f_engine = ModeFEngine()
         
+        # Init Mode S
+        self.mode_s_engine = ModeSEngine()
+        
+        # Trade Manager (Paper Trading)
+        self.active_trades = {} # keyed by instrument name or token
+        
     def start(self):
         if self.thread and self.thread.is_alive(): return False
         self.stop_event.clear()
@@ -989,7 +997,21 @@ class UnifiedRunner:
     def process_instrument(self, token, instrument, strategy, last_processed, global_bias="NEUTRAL"):
         try:
              # UTC Fix: India Time
-            now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+            from datetime import timezone
+            now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+            now = now.replace(tzinfo=None) # Kite uses naive or specific format? 
+            # Kite historical returns string or datetime with tz?
+            # c5 historical usually has tz-aware or naive depending on client. 
+            # But the code historically used utcnow() which is naive UTC.
+            # to match `timedelta(hours=5, minutes=30)` addition which implies we want naive IST or tz-aware IST?
+            # utcnow() returns naive. `+ timedelta` keeps it naive.
+            # So `datetime.now(timezone.utc)` returns aware. 
+            # `+ timedelta` works but result is aware.
+            # If we want exact behavior of `utcnow()`, we should use `datetime.now(timezone.utc).replace(tzinfo=None)`.
+            
+            # Let's stick to the current working behavior but just suppress warning or use recommended way if compatible.
+            # Safest is:
+            now = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=5, minutes=30)
             start = now - timedelta(days=5)
             
             # 1. Fetch Historical
@@ -1015,8 +1037,97 @@ class UnifiedRunner:
             if last_processed != last_candle_time:
                  print(f"[{os.getpid()}] [{instrument}] New Candle Closed: {last_candle_time}")
             
-            # Remove blocking check - ANALYZE ALWAYS
-            # if last_processed == last_candle_time: return last_processed
+            # ----------------------------------------------------
+            # 0. TRADE MANAGEMENT (EXIT CHECK)
+            # ----------------------------------------------------
+            if instrument in self.active_trades:
+                trade = self.active_trades[instrument]
+                c_check = c5[-2] # Last completed candle
+                
+                H = float(c_check['high'])
+                L = float(c_check['low'])
+                
+                exit_res = None
+                pnl = 0.0
+                
+                if trade['direction'] == "BUY":
+                    if float(H) >= float(trade['target']): exit_res = "TARGET HIT"; pnl = float(trade['target']) - float(trade['entry'])
+                    elif float(L) <= float(trade['sl']): exit_res = "SL HIT"; pnl = float(trade['sl']) - float(trade['entry'])
+                elif trade['direction'] == "SELL":
+                    if float(L) <= float(trade['target']): exit_res = "TARGET HIT"; pnl = float(trade['entry']) - float(trade['target'])
+                    elif float(H) >= float(trade['sl']): exit_res = "SL HIT"; pnl = float(trade['entry']) - float(trade['sl'])
+                
+                # Check Trailing for Mode D/Gold? (Not implemented yet to keep simple)
+                
+                if exit_res and last_processed != last_candle_time:
+                    # Log Exit
+                    exit_price = trade['target'] if "TARGET" in exit_res else trade['sl']
+                    msg = f"""
+<b>🔔 EXIT SIGNAL: {instrument}</b>
+TYPE: {exit_res}
+ENTRY: {trade['entry']} | EXIT: {exit_price}
+PNL: {pnl:.2f}
+"""
+                    print(f"EXIT ALERT: {exit_res} on {instrument}")
+                    send_telegram_message(msg.strip())
+                    
+                    # AI Review
+                    exit_data = {
+                        "direction": "EXIT",
+                        "exit_type": exit_res,
+                        "entry": trade['entry'],
+                        "trend_state": "UNKNOWN", # Could store this
+                        "rsi": 0, # Could calculate
+                    }
+                    threading.Thread(target=send_ai_logic, args=(exit_data, instrument)).start()
+                    
+                    del self.active_trades[instrument]
+                    return last_candle_time
+                
+                # If trade active and no exit, do NOT scan for new entries
+                # Unless we allow pyramiding? No, strict 1 trade.
+                if instrument in self.active_trades:
+                    # Just update live watch or return?
+                    # Return to avoid double entry
+                    return last_candle_time
+
+            # ----------------------------------------------------
+            # MODE S HANDLING (Self-Contained)
+            # ----------------------------------------------------
+            if isinstance(strategy, ModeSEngine):
+                 # Mode S analyzes raw candles directly
+                 # Use closed candles for confirmation
+                 c5_closed = c5[:-1]
+                 res_s = strategy.analyze(c5_closed)
+                 
+                 if res_s.valid and last_processed != last_candle_time:
+                      msg = f"""
+<b>🔔 CONFIRMED SIGNAL: MODE S</b>
+INSTRUMENT: {instrument}
+TYPE: {res_s.direction}
+BUCKET: {res_s.bucket.name}
+ENTRY: {res_s.entry}
+SL: {res_s.sl:.1f} | TGT: {res_s.target}
+REASON: {res_s.reason}
+TIME: {last_candle_time}
+"""
+                      print(f"CONFIRMED ALERT: MODE S on {instrument}")
+                      send_telegram_message(msg.strip())
+                      
+                      # Register Trade
+                      self.active_trades[instrument] = {
+                          "mode": "MODE_S",
+                          "direction": res_s.direction,
+                          "entry": res_s.entry,
+                          "sl": res_s.sl,
+                          "target": res_s.target
+                      }
+                      
+                 return last_candle_time
+
+            # ----------------------------------------------------
+            # UNIFIED HANDLING (Nifty/Gold)
+            # ----------------------------------------------------
             
             # Resample 30m
             c30_acc = []
@@ -1034,8 +1145,6 @@ class UnifiedRunner:
                         curr_30['volume'] += c['volume']
                     else: curr_30 = c.copy()
             
-            # Strategy Specific Calls
-            # Strategy Specific Calls
             # Strategy Analysis
             # ----------------------------------------------------
             # PASS 1: CONFIRMED ANALYSIS (Last CLOSED candle)
@@ -1078,6 +1187,15 @@ TIME: {res.get('time')}
                     print(f"CONFIRMED ALERT: {res.get('mode')} on {instrument}")
                     send_telegram_message(msg.strip())
                     threading.Thread(target=send_ai_logic, args=(res, instrument)).start()
+                    
+                    # Register Trade
+                    self.active_trades[instrument] = {
+                        "mode": res.get('mode'),
+                        "direction": res.get('direction'),
+                        "entry": res.get('entry'),
+                        "sl": res.get('sl'),
+                        "target": res.get('target')
+                    }
                 
             # ----------------------------------------------------
             # PASS 2: LIVE WATCH (Current forming candle)
@@ -1134,8 +1252,17 @@ Candle forming... (Wait for close)
         closes = [float(x['close']) for x in c5]
         highs = [float(x['high']) for x in c5]
         lows = [float(x['low']) for x in c5]
-        real_rsi = calculate_rsi(closes, 14)[-1]
-        real_atr = calculate_atr(highs, lows, closes, 14)[-1]
+        
+        # Safe helpers
+        def safe_rsi(d):
+             try: return calculate_rsi(d, 14)[-1]
+             except: return 0
+        def safe_atr(h, l, c):
+             try: return calculate_atr(h, l, c, 14)[-1]
+             except: return 0
+
+        real_rsi = safe_rsi(closes)
+        real_atr = safe_atr(highs, lows, closes)
         
         return {
             "instrument": instrument,
@@ -1150,10 +1277,9 @@ Candle forming... (Wait for close)
             "rsi": real_rsi, "atr": real_atr
         }
 
-# Helper function for AI logic (Global)
     def run_loop(self):
         print("🚀 UNIFIED ENGINE STARTED")
-        print("✅ Active Strategies: [Unified (Modes A-D), Mode F (3-Gear)]")
+        print("✅ Active Strategies: [Unified (Modes A-D), Mode F (3-Gear), Mode S (Sensex)]")
         if not API_KEY or not ACCESS_TOKEN:
              print("Error: Missing API_KEY/ACCESS_TOKEN"); return
 
@@ -1161,7 +1287,7 @@ Candle forming... (Wait for close)
         self.kite.set_access_token(ACCESS_TOKEN)
         
         # Get Tokens
-        inst_list = [NIFTY_INSTRUMENT]
+        inst_list = [NIFTY_INSTRUMENT, SENSEX_INSTRUMENT]
         tokens = {}
         try:
             q = self.kite.quote(inst_list)
@@ -1190,8 +1316,10 @@ Candle forming... (Wait for close)
             current_bias = self.gmam.bias.value if (self.gmam and hasattr(self.gmam.bias, 'value')) else "NEUTRAL"
             
             for inst in inst_list:
-                # NIFTY ONLY
-                if inst == NIFTY_INSTRUMENT: strat = self.nifty_strat
+                if inst == NIFTY_INSTRUMENT: 
+                    strat = self.nifty_strat
+                elif inst == SENSEX_INSTRUMENT:
+                    strat = self.mode_s_engine
                 else: continue
                 
                 last_times[inst] = self.process_instrument(tokens[inst], inst, strat, last_times[inst], global_bias=current_bias)
