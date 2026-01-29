@@ -1147,30 +1147,36 @@ TIME: {last_candle_time}
             
             # Strategy Analysis
             # ----------------------------------------------------
-            # PASS 1: CONFIRMED ANALYSIS (Last CLOSED candle)
+            # PASS 1: CONFIRMED ANALYSIS (with LOOKAHEAD enabled)
             # ----------------------------------------------------
-            c5_closed = c5[:-1] # Remove the live LTP candle we just added
-            c30_acc = self.resample_to_30m(c5_closed)
+            # Note: Including the current forming candle to match TradingView behavior
+            # This enables "lookahead" - trend changes are detected faster
+            # To disable (more conservative), use c5[:-1] instead
+            
+            c5_for_analysis = c5  # LOOKAHEAD ON: includes live candle
+            # c5_for_analysis = c5[:-1]  # LOOKAHEAD OFF: only completed candles (uncomment for strict mode)
+            
+            c30_acc = self.resample_to_30m(c5_for_analysis)
             
             confirmed_signals = []
-            if isinstance(strategy, NiftyStrategy) and len(c5_closed) >= 30:
+            if isinstance(strategy, NiftyStrategy) and len(c5_for_analysis) >= 30:
                 trend, slope = strategy.update_trend_30m(c30_acc)
-                strategy.day_type = strategy.classify_day_type(c30_acc, c5_closed)
+                strategy.day_type = strategy.classify_day_type(c30_acc, c5_for_analysis)
                 
                 # Check Unified Confirmed
-                res_u = strategy.analyze_5m(c5_closed, trend, slope, instrument, global_bias=global_bias)
+                res_u = strategy.analyze_5m(c5_for_analysis, trend, slope, instrument, global_bias=global_bias)
                 if res_u: confirmed_signals.append(res_u)
                 
                 # Check Mode F Confirmed
                 try:
-                    res_f = self.mode_f_engine.predict(c5_closed, global_bias=global_bias)
+                    res_f = self.mode_f_engine.predict(c5_for_analysis, global_bias=global_bias)
                     if res_f.valid:
-                        confirmed_signals.append(self.format_mode_f_signal(res_f, instrument, c5_closed[-1]['date'], c5_closed))
+                        confirmed_signals.append(self.format_mode_f_signal(res_f, instrument, c5_for_analysis[-1]['date'], c5_for_analysis))
                 except Exception as e:
                     print(f"Mode F Pass 1 Error: {e}")
 
             # Process Confirmed Alerts
-            last_candle_time = c5_closed[-1]['date']
+            last_candle_time = c5_for_analysis[-1]['date']
             if last_processed != last_candle_time:
                 for res in confirmed_signals:
                     gear_info = f"GEAR: {res.get('gear')} ({res.get('regime')})" if 'gear' in res else ""

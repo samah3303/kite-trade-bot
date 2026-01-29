@@ -21,8 +21,8 @@ kite.set_access_token(access_token)
 # Configuration
 CAPITAL = 1000000.0
 RISK_PER_TRADE_PCT = 0.02 # 2% per trade
-START_DATE = datetime(2026, 1, 1)
-END_DATE = datetime(2026, 1, 20)
+START_DATE = datetime(2025, 12, 25)
+END_DATE = datetime(2026, 1, 29)
 
 # Instruments to Test
 # Using SPOT INDICES for 1-Year Backtest (Futures contract history is too short)
@@ -84,10 +84,35 @@ def run_backtest():
             except: pass
             return None
 
+    class ModeSWrapper:
+        def __init__(self):
+            from mode_s_engine import ModeSEngine
+            self.engine = ModeSEngine()
+        
+        def update_trend_30m(self, c30):
+             return "MODE_S", 0
+        
+        def analyze_5m(self, c5, t_state, slope, name, global_bias="NEUTRAL"):
+            try:
+                res = self.engine.analyze(c5)
+                if res.valid:
+                    return {
+                        "direction": res.direction,
+                        "mode": "MODE_S",
+                        "bucket": res.bucket.name,
+                        "entry": res.entry,
+                        "sl": res.sl,
+                        "target": res.target,
+                        "pattern": f"{res.bucket.name} | {res.reason}"
+                    }
+            except: pass
+            return None
+
     # Full System Backtest Configuration
     INSTRUMENTS = [
         {"name": "NIFTY_UNIFIED", "symbol": "NSE:NIFTY 50", "strat_cls": NiftyStrategy},
-        {"name": "NIFTY_MODE_F_3GEAR",  "symbol": "NSE:NIFTY 50", "strat_cls": ModeFWrapper}
+        {"name": "NIFTY_MODE_F_3GEAR",  "symbol": "NSE:NIFTY 50", "strat_cls": ModeFWrapper},
+        {"name": "SENSEX_MODE_S", "symbol": "BSE:SENSEX", "strat_cls": ModeSWrapper}
     ]
 
     for inst in INSTRUMENTS:
@@ -148,8 +173,8 @@ def run_backtest():
         # }).dropna()
         
         # Simulation Loop
-        active_trade = None
-        trend_state = ("NEUTRAL", 0) # Format: (State, Slope) or just State
+        active_trades = [] # List of dicts
+        trend_state = ("NEUTRAL", 0) 
         
         for i, c in enumerate(candles_5m):
             if i < 60: continue # Warmup
@@ -173,73 +198,74 @@ def run_backtest():
                  trend_state = ("MODE_F", 0)
                  slope_val = 0
 
-            # Check Active Trade Exit
-            if active_trade:
+            # 1. Check Exits for ALL Active Trades
+            remaining_trades = []
+            for trade in active_trades:
                 sl_hit = False
                 tgt_hit = False
                 exit_price = 0.0
                 exit_reason = ""
                 
-                if active_trade['direction'] == "BUY":
-                    if c['low'] <= active_trade['sl']:
-                        sl_hit = True
-                        exit_price = active_trade['sl']
-                        exit_reason = "SL HIT"
-                    elif c['high'] >= float(active_trade['target']):
-                        tgt_hit = True
-                        exit_price = float(active_trade['target'])
-                        exit_reason = "TARGET HIT"
+                if trade['direction'] == "BUY":
+                    if c['low'] <= trade['sl']:
+                        sl_hit = True; exit_price = trade['sl']; exit_reason = "SL HIT"
+                    elif c['high'] >= float(trade['target']):
+                        tgt_hit = True; exit_price = float(trade['target']); exit_reason = "TARGET HIT"
                         
-                elif active_trade['direction'] == "SELL":
-                    if c['high'] >= active_trade['sl']:
-                        sl_hit = True
-                        exit_price = active_trade['sl']
-                        exit_reason = "SL HIT"
-                    elif c['low'] <= float(active_trade['target']):
-                        tgt_hit = True
-                        exit_price = float(active_trade['target'])
-                        exit_reason = "TARGET HIT"
+                elif trade['direction'] == "SELL":
+                    if c['high'] >= trade['sl']:
+                        sl_hit = True; exit_price = trade['sl']; exit_reason = "SL HIT"
+                    elif c['low'] <= float(trade['target']):
+                        tgt_hit = True; exit_price = float(trade['target']); exit_reason = "TARGET HIT"
                 
                 if sl_hit or tgt_hit:
                     pnl = 0.0
-                    if active_trade['direction'] == "BUY":
-                        pnl = (exit_price - active_trade['entry']) * active_trade['qty']
-                    else:
-                        pnl = (active_trade['entry'] - exit_price) * active_trade['qty']
+                    if trade['direction'] == "BUY": pnl = (exit_price - trade['entry']) * trade['qty']
+                    else: pnl = (trade['entry'] - exit_price) * trade['qty']
                     
                     trade_res = {
                         "instrument": name,
                         "date": curr_time, # Exit Time
-                        "entry_time": active_trade['entry_time'],
-                        "mode": active_trade['mode'],
-                        "gear": active_trade.get('gear', 'N/A'),
-                        "direction": active_trade['direction'],
-                        "entry": active_trade['entry'],
+                        "entry_time": trade['entry_time'],
+                        "mode": trade['mode'],
+                        "gear": trade.get('gear', 'N/A'),
+                        "direction": trade['direction'],
+                        "entry": trade['entry'],
                         "exit": exit_price,
-                        "sl": active_trade['sl'],
+                        "sl": trade['sl'],
                         "pnl": pnl,
                         "reason": exit_reason
                     }
                     all_trades.append(trade_res)
-                    active_trade = None
+                else:
+                    remaining_trades.append(trade)
+            
+            active_trades = remaining_trades 
                     
-            # Check New Entry
-            if not active_trade:
-                t_state = trend_state[0] if isinstance(trend_state, tuple) else trend_state
-                s_val = slope_val if isinstance(trend_state, tuple) else 0
+            # 2. Check New Entry (Parallel)
+            t_state = trend_state[0] if isinstance(trend_state, tuple) else trend_state
+            s_val = slope_val if isinstance(trend_state, tuple) else 0
+            
+            sig = strat.analyze_5m(c5r, t_state, s_val, name)
+            
+            if sig and sig['direction'] in ["BUY", "SELL"]:
+                # Prevent Duplicate Entries (Same Mode/Direction/Gear currently open)
+                is_duplicate = False
+                for t in active_trades:
+                    if t['mode'] == sig['mode'] and t['direction'] == sig['direction']:
+                         if t.get('gear') == sig.get('gear'): # Strict check
+                             is_duplicate = True; break
                 
-                sig = strat.analyze_5m(c5r, t_state, s_val, name)
-                
-                if sig and sig['direction'] in ["BUY", "SELL"]:
+                if not is_duplicate:
                     entry = sig['entry']
                     sl = sig['sl']
                     risk = abs(entry - sl)
                     if risk > 0:
-                        risk_amount = CAPITAL * RISK_PER_TRADE_PCT
+                        risk_amount = 1000.0 # Placeholder, refined in Sim
                         qty = int(risk_amount / risk)
                         if qty < 1: qty = 1
                         
-                        active_trade = {
+                        new_trade = {
                             "direction": sig['direction'],
                             "mode": sig['mode'],
                             "gear": sig.get('gear', 'N/A'),
@@ -250,6 +276,7 @@ def run_backtest():
                             "qty": qty,
                             "entry_time": curr_time
                         }
+                        active_trades.append(new_trade)
 
     # ----------------------------------------------
     # REPORT GENERATION
@@ -291,7 +318,8 @@ def run_backtest():
             
             if risk <= 0: continue
             
-            risk_amt = curr_cap * RISK_PER_TRADE_PCT
+            # FIXED RISK SIZING
+            risk_amt = 1000.0
             new_qty = int(risk_amt / risk)
             if new_qty < 1: new_qty = 1
             
@@ -319,7 +347,7 @@ def run_backtest():
         print(f"Starting Capital: Rs.{CAPITAL:,.2f}")
         print(f"Ending Capital:   Rs.{final_cap:,.2f}")
         print(f"Net PnL:          Rs.{net_pnl:,.2f} ({ret:.1f}%)")
-        print(f"Trades Taken:     {len(sim_trades)}")
+        print(f"Trades Taken:     {len(sim_trades)} (All Valid Trades)")
         
         return pd.DataFrame(sim_trades)
 
