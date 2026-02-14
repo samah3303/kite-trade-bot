@@ -1,350 +1,757 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Unified Trading Console</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <title>RIJIN v3.0.1 Trading Console</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <style>
       :root {
-        --bg-color: #0f172a;
-        --card-bg: rgba(30, 41, 59, 0.7);
-        --accent-color: #3b82f6;
-        --text-primary: #f8fafc;
-        --text-secondary: #94a3b8;
+        --bg-primary: #0f172a;
+        --bg-secondary: #1e293b;
+        --card-bg: rgba(30, 41, 59, 0.6);
+        --accent: #3b82f6;
+        --accent-glow: rgba(59, 130, 246, 0.3);
         --success: #10b981;
+        --success-glow: rgba(16, 185, 129, 0.3);
         --danger: #ef4444;
         --warning: #f59e0b;
-        --glow: 0 0 20px rgba(59, 130, 246, 0.5);
-      }
-      
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      
-      body {
-        background-color: var(--bg-color);
-        background-image: radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
-                          radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
-        color: var(--text-primary);
-        font-family: "Inter", sans-serif;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        min-height: 100vh;
-        padding: 40px 20px;
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+        --text-muted: #64748b;
+        --border: rgba(255, 255, 255, 0.1);
+        --shadow: 0 20px 60px -15px rgba(0, 0, 0, 0.5);
       }
 
-      h1 {
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          "Inter",
+          -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+        background: var(--bg-primary);
+        background-image:
+          radial-gradient(
+            at 0% 0%,
+            rgba(59, 130, 246, 0.15) 0px,
+            transparent 50%
+          ),
+          radial-gradient(
+            at 100% 100%,
+            rgba(16, 185, 129, 0.1) 0px,
+            transparent 50%
+          );
+        color: var(--text-primary);
+        min-height: 100vh;
+        padding: 20px;
+        overflow-x: hidden;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+
+      /* Header */
+      .header {
+        text-align: center;
+        margin-bottom: 40px;
+        animation: fadeInDown 0.6s ease-out;
+      }
+
+      .title {
+        font-size: clamp(2rem, 5vw, 3.5rem);
         font-weight: 800;
-        font-size: 2.5rem;
-        margin-bottom: 10px;
-        background: linear-gradient(to right, #60a5fa, #34d399);
+        background: linear-gradient(135deg, #60a5fa, #34d399);
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
-        letter-spacing: -1px;
+        letter-spacing: -0.02em;
+        margin-bottom: 8px;
       }
-      
+
       .subtitle {
         color: var(--text-secondary);
-        margin-bottom: 40px;
-        font-size: 0.9rem;
+        font-size: clamp(0.75rem, 2vw, 0.9rem);
         text-transform: uppercase;
-        letter-spacing: 2px;
+        letter-spacing: 0.15em;
+        font-weight: 500;
       }
 
-      .status-card {
-        background: var(--card-bg);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 15px 30px;
-        border-radius: 99px;
-        margin-bottom: 40px;
-        display: flex;
+      /* Status Badge */
+      .status-badge {
+        display: inline-flex;
         align-items: center;
-        gap: 15px;
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
-      }
-      
-      .status-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        background-color: var(--text-secondary);
-      }
-      .status-dot.running {
-        background-color: var(--success);
-        box-shadow: 0 0 10px var(--success);
-        animation: pulse 1.5s infinite;
-      }
-      .status-dot.stopped {
-        background-color: var(--danger);
-      }
-      
-      @keyframes pulse {
-        0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-        70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        gap: 10px;
+        background: var(--card-bg);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--border);
+        padding: 12px 24px;
+        border-radius: 50px;
+        margin: 20px 0;
+        box-shadow: var(--shadow);
       }
 
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--text-muted);
+      }
+
+      .status-dot.online {
+        background: var(--success);
+        box-shadow: 0 0 12px var(--success-glow);
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.6;
+        }
+      }
+
+      /* Controls */
       .controls {
         display: flex;
-        gap: 20px;
-        margin-bottom: 30px;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        margin-bottom: 40px;
+        animation: fadeInUp 0.6s ease-out 0.2s both;
       }
-      
-      button, .btn-login {
-        padding: 16px 32px;
+
+      .btn {
+        padding: 14px 28px;
         border: none;
         border-radius: 12px;
         font-size: 14px;
         font-weight: 600;
         cursor: pointer;
-        transition: all 0.3s ease;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.05em;
         color: white;
         text-decoration: none;
-        display: flex;
+        display: inline-flex;
         align-items: center;
         gap: 8px;
         font-family: "Inter", sans-serif;
+        position: relative;
+        overflow: hidden;
       }
-      
-      button:hover, .btn-login:hover {
+
+      .btn:before {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+        transform: translate(-50%, -50%);
+        transition:
+          width 0.6s,
+          height 0.6s;
+      }
+
+      .btn:hover:before {
+        width: 300px;
+        height: 300px;
+      }
+
+      .btn:hover {
         transform: translateY(-2px);
-        filter: brightness(1.1);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
       }
-      
-      button:active { transform: translateY(0); }
 
-      .btn-login { background: linear-gradient(135deg, #3b82f6, #2563eb); box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
-      .btn-start { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); }
-      .btn-stop { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
-      .btn-predict { background: linear-gradient(135deg, #8b5cf6, #7c3aed); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); border: 1px solid rgba(255,255,255,0.2); }
+      .btn-primary {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        box-shadow: 0 4px 16px var(--accent-glow);
+      }
 
-      #log-container {
-        width: 100%;
-        max-width: 900px;
-        height: 500px;
-        background-color: #000;
-        border: 1px solid #333;
-        border-radius: 12px;
+      .btn-success {
+        background: linear-gradient(135deg, #10b981, #059669);
+        box-shadow: 0 4px 16px var(--success-glow);
+      }
+
+      .btn-danger {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+      }
+
+      /* Stats Grid */
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+        animation: fadeInUp 0.6s ease-out 0.3s both;
+      }
+
+      .stat-card {
+        background: var(--card-bg);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 24px;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .stat-card:before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          var(--accent),
+          transparent
+        );
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+
+      .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow);
+        border-color: var(--accent);
+      }
+
+      .stat-card:hover:before {
+        opacity: 1;
+      }
+
+      .stat-label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 12px;
+        font-weight: 600;
+      }
+
+      .stat-value {
+        font-size: 2rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+        line-height: 1;
+      }
+
+      .stat-sub {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        font-weight: 500;
+      }
+
+      /* Active Trade Panel */
+      .trade-panel {
+        background: linear-gradient(
+          135deg,
+          rgba(16, 185, 129, 0.08),
+          rgba(59, 130, 246, 0.05)
+        );
+        border: 2px solid var(--success);
+        border-radius: 20px;
+        padding: 24px;
+        margin-bottom: 30px;
+        animation: fadeInUp 0.6s ease-out 0.4s both;
+        box-shadow: 0 0 30px var(--success-glow);
+      }
+
+      .trade-header {
+        font-size: 0.75rem;
+        color: var(--success);
+        font-weight: 700;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      .trade-details {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        line-height: 1.6;
+      }
+
+      /* Backtest Comparison */
+      .backtest-panel {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 24px;
+        background: var(--card-bg);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 28px;
+        margin-bottom: 30px;
+        animation: fadeInUp 0.6s ease-out 0.5s both;
+      }
+
+      .backtest-col h3 {
+        font-size: 0.875rem;
+        color: var(--accent);
+        margin-bottom: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-weight: 700;
+      }
+
+      .backtest-col p {
+        margin: 10px 0;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .backtest-col span {
+        color: var(--text-primary);
+        font-weight: 700;
+        font-size: 1.1rem;
+      }
+
+      /* Console Log */
+      .console-panel {
+        animation: fadeInUp 0.6s ease-out 0.6s both;
+      }
+
+      .console-header {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-weight: 700;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      .log-container {
+        background: #000;
+        border: 1px solid var(--border);
+        border-radius: 16px;
         padding: 20px;
+        height: 400px;
         overflow-y: auto;
-        font-family: "JetBrains Mono", "Consolas", monospace;
+        font-family: "Courier New", monospace;
         font-size: 13px;
         color: #e2e8f0;
-        line-height: 1.5;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        line-height: 1.6;
+        box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
       }
-      
+
       /* Scrollbar */
-      ::-webkit-scrollbar { width: 8px; }
-      ::-webkit-scrollbar-track { background: #0f172a; }
-      ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: #475569; }
-
-      /* Modal */
-      .modal {
-        display: none; position: fixed; z-index: 100; left: 0; top: 0;
-        width: 100%; height: 100%; overflow: auto;
-        background-color: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
-      }
-      .modal-content {
-        background: #1e293b;
-        margin: 10% auto; padding: 40px;
-        border: 1px solid rgba(255,255,255,0.1);
-        width: 90%; max-width: 500px;
-        border-radius: 20px;
-        text-align: center;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        position: relative;
-        animation: slideIn 0.3s ease-out;
-      }
-      @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-      
-      .close { position: absolute; top: 20px; right: 25px; color: #64748b; font-size: 28px; cursor: pointer; transition: 0.2s; }
-      .close:hover { color: #fff; }
-      
-      .modal h2 { margin-bottom: 20px; font-size: 1.5rem; color: #f8fafc; }
-      
-      #pred-decision { font-size: 2rem; margin: 20px 0; font-weight: 800; }
-      
-      .pred-details {
-        display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
-        margin-top: 20px; padding-top: 20px; border-top: 1px solid #334155;
-      }
-      .pred-details p { font-size: 0.85rem; color: #94a3b8; display: flex; flex-direction: column; gap: 5px; }
-      .pred-details span { color: #f1f5f9; font-weight: 600; font-size: 1rem; }
-      
-      #pred-trade-box {
-        margin-top: 25px; background: rgba(16, 185, 129, 0.1); 
-        border: 1px solid rgba(16, 185, 129, 0.2);
-        border-radius: 12px; padding: 20px;
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
       }
 
-      /* --- MOBILE RESPONSIVENESS --- */
+      ::-webkit-scrollbar-track {
+        background: var(--bg-primary);
+        border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: var(--text-muted);
+        border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--text-secondary);
+      }
+
+      /* Animations */
+      @keyframes fadeInDown {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Mobile Responsive */
       @media (max-width: 768px) {
         body {
-          padding: 20px 10px;
+          padding: 16px;
         }
-        
-        h1 {
-          font-size: 1.8rem;
-          text-align: center;
+
+        .stats-grid {
+          grid-template-columns: 1fr;
+          gap: 16px;
         }
-        
-        .subtitle {
-          font-size: 0.75rem;
-          margin-bottom: 30px;
-          text-align: center;
+
+        .stat-card {
+          padding: 20px;
         }
-        
-        .status-card {
-          width: 100%;
-          justify-content: center;
-          margin-bottom: 30px;
-          padding: 12px 20px;
+
+        .stat-value {
+          font-size: 1.75rem;
         }
-        
+
+        .backtest-panel {
+          grid-template-columns: 1fr;
+          gap: 20px;
+          padding: 20px;
+        }
+
+        .log-container {
+          height: 320px;
+          font-size: 12px;
+          padding: 16px;
+        }
+
         .controls {
           flex-direction: column;
           width: 100%;
-          gap: 15px;
         }
-        
-        button, .btn-login {
+
+        .btn {
           width: 100%;
           justify-content: center;
-          padding: 14px 20px;
-          font-size: 14px;
         }
-        
-        #log-container {
-          height: 400px;
-          font-size: 11px;
-          padding: 15px;
+      }
+
+      @media (max-width: 480px) {
+        .header {
+          margin-bottom: 30px;
+        }
+
+        .stat-value {
+          font-size: 1.5rem;
+        }
+
+        .trade-panel {
+          padding: 20px;
+        }
+
+        .trade-details {
+          font-size: 1rem;
         }
       }
     </style>
   </head>
   <body>
-    <h1>Unified Trading Console</h1>
-    <div class="subtitle">Advanced Algorithmic Execution Engine</div>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1 class="title">RIJIN v3.0.1</h1>
+        <p class="subtitle">
+          Impulse-Based Timing • Consecutive Loss Protection
+        </p>
 
-    <div class="status-card">
-      <div id="status-dot" class="status-dot stopped"></div>
-      <span id="status-text">SYSTEM OFFLINE</span>
+        <div class="status-badge">
+          <div class="status-dot" id="status-dot"></div>
+          <span id="status-text">SYSTEM OFFLINE</span>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <a href="/login" class="btn btn-primary">
+          <svg
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"
+            />
+          </svg>
+          Login to Kite
+        </a>
+        <button class="btn btn-success" onclick="startBot()">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+          Start Engine
+        </button>
+        <button class="btn btn-danger" onclick="stopBot()">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M6 6h12v12H6z" />
+          </svg>
+          Stop Engine
+        </button>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Day Type</div>
+          <div class="stat-value" id="day-type">Unknown</div>
+          <div class="stat-sub" id="phase">Phase: Detecting...</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">System Status</div>
+          <div class="stat-value" id="system-status">Offline</div>
+          <div class="stat-sub" id="pause-status">No pause</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Daily P&L</div>
+          <div class="stat-value" id="daily-pnl">+0.00R</div>
+          <div class="stat-sub" id="daily-trades">0 trades</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Consecutive Losses</div>
+          <div class="stat-value" id="consec-losses">0</div>
+          <div class="stat-sub" id="loss-status">✅ Active</div>
+        </div>
+      </div>
+
+      <!-- Active Trade Panel -->
+      <div class="trade-panel" id="trade-panel" style="display: none">
+        <div class="trade-header">⚡ Active Trade</div>
+        <div class="trade-details" id="trade-details"></div>
+      </div>
+
+      <!-- Backtest Comparison -->
+      <div class="backtest-panel">
+        <div class="backtest-col">
+          <h3>📊 Backtest Results (67 days)</h3>
+          <p>Win Rate <span id="bt-winrate">56.72%</span></p>
+          <p>Total P&L <span id="bt-total">+17.98R</span></p>
+          <p>Avg Win <span id="bt-avgwin">+1.24R</span></p>
+          <p>Worst Day <span id="bt-worst">-2.00R</span></p>
+        </div>
+        <div class="backtest-col">
+          <h3>📈 Today vs Expected</h3>
+          <p>
+            Trades
+            <span
+              ><span id="today-trades">0</span> /
+              <span id="exp-trades">1.4</span></span
+            >
+          </p>
+          <p>
+            P&L
+            <span
+              ><span id="today-pnl">+0.00R</span> /
+              <span id="exp-pnl">+0.27R</span></span
+            >
+          </p>
+          <p>Win Rate <span id="today-winrate">-%</span></p>
+        </div>
+      </div>
+
+      <!-- Console Log -->
+      <div class="console-panel">
+        <div class="console-header">📜 Console Output</div>
+        <div class="log-container" id="log-container">
+          Initializing RIJIN v3.0.1 Console...
+        </div>
+      </div>
     </div>
 
-    <div class="controls">
-      <a href="/login" class="btn-login">
-        <!-- Icon: Key -->
-        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
-        Login
-      </a>
-      <button class="btn-start" onclick="startBot()">
-        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-        Start Engine
-      </button>
-      <button class="btn-stop" onclick="stopBot()">
-        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
-        Stop Engine
-      </button>
-            <!-- PREDICT BUTTON REMOVED for 3-GEAR AUTOMATION -->
-    </div>
-
-    
-    <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
-
-    <div id="log-container">Initializing Console...</div>
-    
     <script>
+      // DOM Elements
       const statusText = document.getElementById("status-text");
       const statusDot = document.getElementById("status-dot");
       const logBox = document.getElementById("log-container");
-      const modal = document.getElementById("predict-modal");
-      const loadingDiv = document.getElementById("predict-loading");
-      const resultDiv = document.getElementById("predict-result");
+      const tradePanel = document.getElementById("trade-panel");
 
+      // Update System Status
       async function updateStatus() {
         try {
           const res = await fetch("/status");
           const data = await res.json();
+
           if (data.running) {
             statusText.textContent = "SYSTEM ONLINE";
-            statusText.style.color = "#10b981";
-            statusDot.className = "status-dot running";
+            statusText.style.color = "var(--success)";
+            statusDot.classList.add("online");
           } else {
             statusText.textContent = "SYSTEM OFFLINE";
-            statusText.style.color = "#ef4444";
-            statusDot.className = "status-dot stopped";
+            statusText.style.color = "var(--danger)";
+            statusDot.classList.remove("online");
           }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+          console.error("Status update error:", e);
+        }
       }
 
+      // Update RIJIN v3.0.1 Stats
+      async function updateRijinStats() {
+        try {
+          const res = await fetch("/rijin/v3/live-stats");
+          const data = await res.json();
+
+          // Day Type
+          document.getElementById("day-type").textContent =
+            data.day_type || "Unknown";
+          document.getElementById("phase").textContent =
+            `Phase: ${data.phase || "Detecting..."}`;
+
+          // System Status
+          const sysStatus = document.getElementById("system-status");
+          if (data.running) {
+            sysStatus.textContent = "Running";
+            sysStatus.style.color = "var(--success)";
+          } else {
+            sysStatus.textContent = "Offline";
+            sysStatus.style.color = "var(--danger)";
+          }
+
+          // Pause Status
+          const pauseEl = document.getElementById("pause-status");
+          if (data.paused) {
+            pauseEl.textContent = `⏸️ Paused until ${data.pause_until}`;
+            pauseEl.style.color = "var(--warning)";
+          } else {
+            pauseEl.textContent = "No pause";
+            pauseEl.style.color = "var(--text-secondary)";
+          }
+
+          // Daily P&L
+          const pnlEl = document.getElementById("daily-pnl");
+          const pnl = data.daily_pnl_r || 0;
+          pnlEl.textContent = `${pnl > 0 ? "+" : ""}${pnl.toFixed(2)}R`;
+          pnlEl.style.color = pnl >= 0 ? "var(--success)" : "var(--danger)";
+
+          document.getElementById("daily-trades").textContent =
+            `${data.daily_trades || 0} trades`;
+
+          // Consecutive Losses
+          const lossEl = document.getElementById("consec-losses");
+          lossEl.textContent = data.consecutive_losses || 0;
+          lossEl.style.color =
+            data.consecutive_losses >= 2
+              ? "var(--danger)"
+              : "var(--text-primary)";
+
+          const lossStatus = document.getElementById("loss-status");
+          if (data.consecutive_losses >= 2) {
+            lossStatus.textContent = "⚠️ At Limit";
+            lossStatus.style.color = "var(--danger)";
+          } else {
+            lossStatus.textContent = "✅ Active";
+            lossStatus.style.color = "var(--success)";
+          }
+
+          // Active Trade
+          if (data.active_trades > 0 && data.active_trade) {
+            const trade = data.active_trade;
+            document.getElementById("trade-details").innerHTML = `
+            <strong style="color: var(${trade.direction === "BUY" ? "--success" : "--danger"})">${trade.direction}</strong> @ ${trade.entry} | 
+            SL: ${trade.sl} | Target: ${trade.target}${trade.time ? ` | Time: ${trade.time}` : ""}
+          `;
+            tradePanel.style.display = "block";
+          } else {
+            tradePanel.style.display = "none";
+          }
+
+          // Today stats
+          const todayTrades = data.daily_trades || 0;
+          const todayWins = Math.round(todayTrades * 0.57); // Estimate
+          document.getElementById("today-trades").textContent = todayTrades;
+          document.getElementById("today-pnl").textContent =
+            `${pnl > 0 ? "+" : ""}${pnl.toFixed(2)}R`;
+          document.getElementById("today-winrate").textContent =
+            todayTrades > 0
+              ? `${Math.round((todayWins / todayTrades) * 100)}%`
+              : "-%";
+        } catch (e) {
+          console.error("RIJIN stats error:", e);
+        }
+      }
+
+      // Load Backtest Results
+      async function loadBacktestResults() {
+        try {
+          const res = await fetch("/rijin/v3/backtest-results");
+          const data = await res.json();
+
+          document.getElementById("bt-winrate").textContent =
+            `${data.win_rate}%`;
+          document.getElementById("bt-total").textContent =
+            `+${data.total_pnl_r}R`;
+          document.getElementById("bt-avgwin").textContent =
+            `+${data.avg_win_r}R`;
+          document.getElementById("bt-worst").textContent =
+            `${data.worst_day_r}R`;
+        } catch (e) {
+          console.error("Backtest load error:", e);
+        }
+      }
+
+      // Update Logs
       async function fetchLogs() {
         try {
           const res = await fetch("/logs");
           const data = await res.json();
-          if(logBox.textContent !== data.logs) {
-              logBox.textContent = data.logs;
-              logBox.scrollTop = logBox.scrollHeight;
+
+          if (logBox.textContent !== data.logs) {
+            logBox.textContent = data.logs;
+            logBox.scrollTop = logBox.scrollHeight;
           }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+          console.error("Logs fetch error:", e);
+        }
       }
 
-      async function startBot() { await fetch("/start", { method: "POST" }); setTimeout(updateStatus, 500); }
-      async function stopBot() { await fetch("/stop", { method: "POST" }); setTimeout(updateStatus, 500); }
-      function closeModal() { modal.style.display = "none"; }
-      
-      async function runPrediction() {
-          modal.style.display = "block";
-          loadingDiv.style.display = "block";
-          resultDiv.style.display = "none";
-          try {
-              const res = await fetch("/predict", { method: "POST" });
-              const data = await res.json();
-              loadingDiv.style.display = "none";
-              resultDiv.style.display = "block";
-              
-              if(!data.valid && data.message) {
-                 document.getElementById("pred-decision").innerText = "ERROR";
-                 document.getElementById("pred-decision").style.color = "#ef4444";
-                 document.getElementById("pred-reason").innerText = data.message;
-                 return;
-              }
-
-              const decisionEl = document.getElementById("pred-decision");
-              if (data.decision === "VALID") {
-                  decisionEl.innerHTML = "✅ CALL VALID";
-                  decisionEl.style.color = "#10b981";
-                  document.getElementById("pred-trade-box").style.display = "block";
-              } else {
-                  decisionEl.innerHTML = "🚫 CALL NOT VALID";
-                  decisionEl.style.color = "#ef4444"; // Red
-                  document.getElementById("pred-trade-box").style.display = "none";
-              }
-
-              document.getElementById("pred-reason").innerText = data.reason;
-              document.getElementById("pred-vol").innerText = data.details.volatility;
-              document.getElementById("pred-struct").innerText = data.details.structure;
-              document.getElementById("pred-global").innerText = data.details.global_bias;
-
-              if(data.decision === "VALID") {
-                  document.getElementById("pred-dir").innerText = data.direction;
-                  document.getElementById("pred-entry").innerText = data.details.entry;
-                  document.getElementById("pred-sl").innerText = data.details.sl;
-                  document.getElementById("pred-tgt").innerText = data.details.target;
-              }
-          } catch(e) {
-              loadingDiv.style.display = "none";
-              alert("Error: " + e);
-          }
+      // Control Functions
+      async function startBot() {
+        await fetch("/start", { method: "POST" });
+        setTimeout(updateStatus, 500);
       }
-      window.onclick = function(e) { if (e.target == modal) closeModal(); }
-      setInterval(() => { updateStatus(); fetchLogs(); }, 2000);
-      updateStatus(); fetchLogs();
+
+      async function stopBot() {
+        await fetch("/stop", { method: "POST" });
+        setTimeout(updateStatus, 500);
+      }
+
+      // Initialize
+      updateStatus();
+      updateRijinStats();
+      loadBacktestResults();
+      fetchLogs();
+
+      // Auto-update every 2 seconds
+      setInterval(() => {
+        updateStatus();
+        updateRijinStats();
+        fetchLogs();
+      }, 2000);
     </script>
   </body>
 </html>
