@@ -26,8 +26,9 @@ from rijin_config import *
 # ===================================================================
 class DayTypeEngine:
     """
-    Classifies market days into 5 human-readable types
+    Classifies market days into 9 human-readable types
     Direction: ONLY WORSE (never upgrades)
+    v3.1: Added ROTATIONAL_EXPANSION, LIQUIDITY_SWEEP_TRAP, FAST_REGIME_FLIP
     """
     
     def __init__(self):
@@ -81,7 +82,19 @@ class DayTypeEngine:
     
     def classify_day(self, candles_5m, candles_30m, indicators, is_expiry_day=False):
         """
-        Main classification logic
+        Main classification logic (v3.1 PRIORITY ORDER)
+        Higher priority = more dangerous. Once degraded, cannot upgrade.
+        
+        Priority:
+        1. EXPIRY_DISTORTION
+        2. LIQUIDITY_SWEEP_TRAP
+        3. RANGE_CHOPPY
+        4. ROTATIONAL_EXPANSION
+        5. FAST_REGIME_FLIP
+        6. CLEAN_TREND
+        7. NORMAL_TREND
+        8. EARLY_IMPULSE_SIDEWAYS
+        
         Returns: (DayType, reason)
         """
         try:
@@ -91,21 +104,39 @@ class DayTypeEngine:
             # Update day stats
             self._update_day_stats(candles_5m, indicators)
             
-            # IMMEDIATE: Expiry Distortion
+            # === DANGEROUS TYPES FIRST (highest severity) ===
+            
+            # 1. EXPIRY_DISTORTION (severity 8)
             if is_expiry_day and datetime.now().time() > dtime(12, 0):
                 return DayType.EXPIRY_DISTORTION, "Expiry day post-noon"
             
-            # IMMEDIATE: Range / Choppy
+            # 2. LIQUIDITY_SWEEP_TRAP (severity 7)
+            if self._is_liquidity_sweep_trap(candles_5m, indicators):
+                return DayType.LIQUIDITY_SWEEP_TRAP, "Stop-hunt pattern detected (expansion + reversal)"
+            
+            # 3. RANGE_CHOPPY (severity 6)
             if self._is_range_choppy(candles_5m, candles_30m, indicators):
                 return DayType.RANGE_CHOPPY, "Choppy price action"
             
-            # Check other types (in degradation order)
+            # 4. ROTATIONAL_EXPANSION (severity 5)
+            if self._is_rotational_expansion(candles_5m, indicators):
+                return DayType.ROTATIONAL_EXPANSION, "ATR expanding but structure unstable"
+            
+            # 5. FAST_REGIME_FLIP (severity 4)
+            if self._is_fast_regime_flip(candles_5m, indicators):
+                return DayType.FAST_REGIME_FLIP, "Morning trend reversed violently"
+            
+            # === SAFE TYPES (lower severity) ===
+            
+            # 6. CLEAN_TREND (severity 1)
             if self._is_clean_trend(candles_5m, candles_30m, indicators):
                 return DayType.CLEAN_TREND, "Clean expansion & pullbacks"
             
+            # 7. NORMAL_TREND (severity 2)
             if self._is_normal_trend(candles_5m, candles_30m, indicators):
                 return DayType.NORMAL_TREND, "Directional with slower expansion"
             
+            # 8. EARLY_IMPULSE_SIDEWAYS (severity 3)
             if self._is_early_impulse_sideways(candles_5m, indicators):
                 return DayType.EARLY_IMPULSE_SIDEWAYS, "Early move, then compression"
             
@@ -113,7 +144,7 @@ class DayTypeEngine:
             return DayType.NORMAL_TREND, "Default classification"
         
         except Exception as e:
-            print(f"❌ Day classification error: {e}")
+            print(f"Error Day classification error: {e}")
             traceback.print_exc()
             return self.current_day_type, "Error in classification"
     
@@ -333,6 +364,157 @@ class DayTypeEngine:
         except:
             return False
     
+    def _is_liquidity_sweep_trap(self, c5, ind):
+        """
+        LIQUIDITY SWEEP TRAP (v3.1):
+        Catch stop-hunt days early.
+        - Large expansion candle (> 1.2x ATR)
+        - Immediate reversal (> 0.8x ATR)
+        - Opposite direction candle
+        """
+        try:
+            if len(c5) < 4:
+                return False
+            
+            cfg = REGIME_THRESHOLDS['liquidity_sweep_trap']
+            atr = ind['atr']
+            
+            c1 = c5[-3]  # Context candle
+            c2 = c5[-2]  # Expansion candle
+            c3 = c5[-1]  # Reversal candle
+            
+            # Large expansion candle
+            expansion = (float(c2['high']) - float(c2['low'])) > cfg['expansion_atr_multiple'] * atr
+            
+            # Immediate reversal
+            reversal = abs(float(c3['close']) - float(c2['close'])) > cfg['reversal_atr_multiple'] * atr
+            
+            # Opposite direction
+            c2_bull = float(c2['close']) > float(c2['open'])
+            c3_bull = float(c3['close']) > float(c3['open'])
+            direction_flip = (c2_bull and not c3_bull) or (not c2_bull and c3_bull)
+            
+            return expansion and reversal and direction_flip
+        
+        except:
+            return False
+    
+    def _is_rotational_expansion(self, c5, ind):
+        """
+        ROTATIONAL EXPANSION (v3.1):
+        ATR expanding but structure unstable.
+        - ATR expanding (> 1.05x first ATR)
+        - RSI crossing 50 at least 3 times in last 10 candles
+        - VWAP crossovers >= 3
+        - At least 1 failed breakout
+        """
+        try:
+            if len(c5) < 12:
+                return False
+            
+            cfg = REGIME_THRESHOLDS['rotational_expansion']
+            atr = ind['atr']
+            
+            # ATR expanding
+            if self.day_stats['first_atr']:
+                atr_expanding = atr > cfg['atr_expansion_ratio'] * self.day_stats['first_atr']
+            else:
+                return False
+            
+            if not atr_expanding:
+                return False
+            
+            # RSI crossing 50 multiple times (simplified: use close vs EMA as proxy)
+            closes = [float(c['close']) for c in c5[-12:]]
+            ema20 = ind['ema20']
+            
+            # Count times close crosses EMA20 (proxy for RSI 50 cross)
+            cross_count = 0
+            for i in range(1, len(closes)):
+                above_now = closes[i] > ema20
+                above_prev = closes[i-1] > ema20
+                if above_now != above_prev:
+                    cross_count += 1
+            
+            if cross_count < cfg['rsi_cross_50_min']:
+                return False
+            
+            # VWAP crossovers
+            vwap = self.day_stats.get('vwap')
+            if vwap:
+                vwap_cross = 0
+                for i in range(1, len(closes)):
+                    above_now = closes[i] > vwap
+                    above_prev = closes[i-1] > vwap
+                    if above_now != above_prev:
+                        vwap_cross += 1
+                
+                if vwap_cross < cfg['vwap_cross_min']:
+                    return False
+            
+            # Failed breakouts (candle makes new high but next candle closes below)
+            failed_breaks = 0
+            recent = c5[-8:]
+            for i in range(2, len(recent) - 1):
+                prev_highs = [float(c['high']) for c in recent[:i]]
+                if float(recent[i]['high']) > max(prev_highs):
+                    if float(recent[i+1]['close']) < float(recent[i]['close']):
+                        failed_breaks += 1
+            
+            if failed_breaks < cfg['failed_breakout_min']:
+                return False
+            
+            return True
+        
+        except:
+            return False
+    
+    def _is_fast_regime_flip(self, c5, ind):
+        """
+        FAST REGIME FLIP (v3.1):
+        Morning trend followed by violent opposite impulse.
+        - Morning range > 1.5x ATR  (first 12 candles)
+        - Recent reversal range > 1.2x ATR (last 6 candles)
+        - Direction changed (morning bull -> recent bear or vice versa)
+        """
+        try:
+            cfg = REGIME_THRESHOLDS['fast_regime_flip']
+            atr = ind['atr']
+            
+            morning_count = cfg['lookback_morning']
+            recent_count = cfg['lookback_recent']
+            
+            if len(c5) < morning_count + recent_count:
+                return False
+            
+            # Morning range
+            morning_candles = c5[:morning_count]
+            morning_high = max(float(c['high']) for c in morning_candles)
+            morning_low = min(float(c['low']) for c in morning_candles)
+            morning_range = morning_high - morning_low
+            
+            # Recent range
+            recent_candles = c5[-recent_count:]
+            recent_high = max(float(c['high']) for c in recent_candles)
+            recent_low = min(float(c['low']) for c in recent_candles)
+            recent_range = recent_high - recent_low
+            
+            # Size checks
+            if morning_range < cfg['morning_move_atr'] * atr:
+                return False
+            if recent_range < cfg['recent_range_atr'] * atr:
+                return False
+            
+            # Direction change: compare 4th morning candle vs latest candle
+            morning_bull = float(morning_candles[3]['close']) > float(morning_candles[3]['open'])
+            recent_bull = float(c5[-1]['close']) > float(c5[-1]['open'])
+            direction_change = morning_bull != recent_bull
+            
+            return direction_change
+        
+        except:
+            return False
+    
     def update_day_type(self, new_type, reason, current_time):
         """
         Apply degradation rules with confirmation
@@ -364,8 +546,8 @@ class DayTypeEngine:
             self.current_day_type = new_type
             self.last_check_time = current_time
             
-            # Lock day if RANGE_CHOPPY
-            if new_type == DayType.RANGE_CHOPPY:
+            # Lock day if terminal regime
+            if new_type in [DayType.RANGE_CHOPPY, DayType.LIQUIDITY_SWEEP_TRAP]:
                 self.day_locked = True
             
             message = f"🚨 DAY TYPE DOWNGRADE: {new_type.value} (Immediate)"
@@ -706,6 +888,10 @@ class ExecutionGates:
                 expansion = impulse_engine.get_expansion_from_impulse(price)
                 threshold_multiple = EXECUTION_GATES['exhaustion_atr_multiple']
                 
+                # v3.1: Regime-aware exhaustion threshold
+                if hasattr(self, '_day_type_override'):
+                    pass  # Will be handled by caller
+                
                 if expansion > threshold_multiple:
                     return False, f"Move exhausted (Expansion {expansion:.1f}× ATR from impulse, threshold {threshold_multiple}×)"
                 
@@ -754,6 +940,8 @@ class ExecutionGates:
                 DayType.EARLY_IMPULSE_SIDEWAYS,
                 DayType.RANGE_CHOPPY,
                 DayType.EXPIRY_DISTORTION,
+                DayType.ROTATIONAL_EXPANSION,
+                DayType.FAST_REGIME_FLIP,
             ]
             
             if day_type in bad_day_types:
@@ -1028,10 +1216,10 @@ class SystemStopManager:
         if self.stopped:
             return True, self.stop_reason
         
-        # Condition 1: Range/Choppy day
-        if day_type == DayType.RANGE_CHOPPY:
+        # Condition 1: Range/Choppy or Liquidity Sweep Trap
+        if day_type in [DayType.RANGE_CHOPPY, DayType.LIQUIDITY_SWEEP_TRAP]:
             self.stopped = True
-            self.stop_reason = "Market conditions hostile (Range/Choppy day)"
+            self.stop_reason = f"Market conditions hostile ({day_type.value})"
             return True, self.stop_reason
         
         # Condition 2: 3 consecutive blocks
@@ -1065,8 +1253,14 @@ class ModePermissionChecker:
     @staticmethod
     def check_mode_f(day_type, current_time, is_expiry_day):
         """Check if MODE_F is allowed"""
-        # Day type check
+        # Day type check (v3.1: ROTATIONAL_EXPANSION allows 1 conditional trade)
         if day_type not in MODE_F_ALLOWED_DAY_TYPES:
+            # v3.1: ROTATIONAL_EXPANSION = conditional allow (max 1)
+            if day_type == DayType.ROTATIONAL_EXPANSION:
+                return True, "MODE_F conditional (ROTATIONAL_EXPANSION: max 1 trade)"
+            # v3.1: FAST_REGIME_FLIP = conditional allow (max 1, stricter RSI)
+            if day_type == DayType.FAST_REGIME_FLIP:
+                return True, "MODE_F conditional (FAST_REGIME_FLIP: max 1 continuation)"
             return False, f"MODE_F blocked (Day Type: {day_type.value})"
         
         # Not in late expiry phase
@@ -1100,7 +1294,9 @@ class ModePermissionChecker:
             return False, "MODE_S LIQUIDITY blocked (After 13:00)"
         
         # No forced trades on bad days
-        if day_type in [DayType.EXPIRY_DISTORTION, DayType.RANGE_CHOPPY]:
+        if day_type in [DayType.EXPIRY_DISTORTION, DayType.RANGE_CHOPPY,
+                        DayType.LIQUIDITY_SWEEP_TRAP, DayType.ROTATIONAL_EXPANSION,
+                        DayType.FAST_REGIME_FLIP]:
             return False, "No forced trades on hostile days"
         
         return True, None
@@ -1109,6 +1305,8 @@ class ModePermissionChecker:
 # Export main classes
 __all__ = [
     'DayTypeEngine',
+    'ImpulseDetectionEngine',
+    'TrendPhaseEngine',
     'ExecutionGates',
     'OpeningImpulseTracker',
     'CorrelationBrake',

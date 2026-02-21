@@ -6,12 +6,13 @@ Provides thread-based interface for Flask dashboard
 import threading
 import logging
 from datetime import datetime
-from rijin_live import RijinLiveEngine
+from rijin_live import RijinLiveEngine, send_telegram_message
 
 # Global engine instance
 _engine = None
-_thread = None
+thread = None  # Exposed for app.py: active_bot.thread.is_alive()
 _running = False
+_stop_event = threading.Event()
 
 # Expose stats for dashboard
 current_day_type = None
@@ -44,30 +45,36 @@ def _run_engine():
     """Internal thread function"""
     global _running, _engine
     try:
-        _engine = RijinLiveEngine()
+        _engine = RijinLiveEngine(stop_event=_stop_event)
         _running = True
-        
-        # Override run() to update stats periodically
-        while _running:
-            try:
-                _engine.run()
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                logging.error(f"Engine error: {e}")
-                break
+        _engine.run()
+    except Exception as e:
+        error_msg = f"Engine crashed: {e}"
+        logging.error(error_msg)
+        # Send crash notification to Telegram
+        try:
+            send_telegram_message(
+                f"🚨 <b>RIJIN ENGINE CRASHED</b>\n\n"
+                f"Error: {error_msg}\n\n"
+                f"The engine has stopped. Please restart from the dashboard."
+            )
+        except:
+            pass
     finally:
         _running = False
 
 def start():
     """Start the RIJIN v3.0.1 engine in background thread"""
-    global _thread, _running
+    global thread, _running, _stop_event
     
-    if _thread and _thread.is_alive():
+    if thread and thread.is_alive():
         return False  # Already running
     
-    _thread = threading.Thread(target=_run_engine, daemon=True)
-    _thread.start()
+    # Reset stop event for new run
+    _stop_event = threading.Event()
+    
+    thread = threading.Thread(target=_run_engine, daemon=True)
+    thread.start()
     
     # Give it a moment to initialize
     import time
@@ -77,21 +84,17 @@ def start():
     return True
 
 def stop():
-    """Stop the RIJIN v3.0.1 engine"""
+    """Stop the RIJIN v3.0.1 engine gracefully"""
     global _running, _engine
     
-    _running = False
+    # Signal the engine to stop via the event
+    _stop_event.set()
     
     if _engine:
-        # Engine will stop on next iteration
-        pass
+        _engine.stop()
     
+    _running = False
     logging.info("RIJIN v3.0.1 Live Engine stop signal sent")
-
-# Expose thread for dashboard status check
-@property
-def thread():
-    return _thread
 
 # Compatibility attributes for dashboard
 class DummyObject:

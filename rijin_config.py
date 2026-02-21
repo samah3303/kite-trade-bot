@@ -15,10 +15,13 @@ from datetime import time as dtime
 class DayType(Enum):
     CLEAN_TREND = "Clean Trend Day"
     NORMAL_TREND = "Normal Trend Day"
-    EARLY_IMPULSE_SIDEWAYS = "Early Impulse → Sideways Day"
+    EARLY_IMPULSE_SIDEWAYS = "Early Impulse -> Sideways Day"
     RANGE_CHOPPY = "Range / Choppy Day"
     VOLATILITY_SPIKE = "Volatility Spike / News Shock"
     EXPIRY_DISTORTION = "Expiry Distortion Day"
+    ROTATIONAL_EXPANSION = "Rotational Expansion Day"
+    LIQUIDITY_SWEEP_TRAP = "Liquidity Sweep Trap Day"
+    FAST_REGIME_FLIP = "Fast Regime Flip Day"
     UNKNOWN = "Unknown (Early Data)"
 
 
@@ -84,6 +87,34 @@ DAY_TYPE_THRESHOLDS = {
     },
 }
 
+# ===================================================================
+# NEW REGIME DETECTION THRESHOLDS (v3.1)
+# ===================================================================
+REGIME_THRESHOLDS = {
+    "liquidity_sweep_trap": {
+        "expansion_atr_multiple": 1.2,   # Large expansion candle > 1.2x ATR
+        "reversal_atr_multiple": 0.8,    # Immediate reversal > 0.8x ATR
+        "pause_duration_min": 60,        # Hard 60-min pause
+    },
+    "rotational_expansion": {
+        "atr_expansion_ratio": 1.05,     # ATR expanding but unstable
+        "rsi_cross_50_min": 3,           # RSI crossing 50 at least 3 times
+        "vwap_cross_min": 3,             # VWAP crossovers at least 3
+        "failed_breakout_min": 1,        # At least 1 failed breakout
+        "max_trades": 1,                 # Allow max 1 trade
+        "exhaustion_multiple_override": 1.2,  # Reduced from 1.5x
+    },
+    "fast_regime_flip": {
+        "morning_move_atr": 1.5,         # Morning range > 1.5x ATR
+        "recent_range_atr": 1.2,         # Recent reversal range > 1.2x ATR
+        "lookback_morning": 12,          # First 12 candles = morning
+        "lookback_recent": 6,            # Last 6 candles = recent
+        "max_trades_after_flip": 1,      # Only 1 continuation trade
+        "rsi_confirmation_bull": 55,     # Stricter RSI for buy
+        "rsi_confirmation_bear": 45,     # Stricter RSI for sell
+    },
+}
+
 
 
 # ===================================================================
@@ -93,16 +124,20 @@ DAY_TYPE_HIERARCHY = {
     DayType.CLEAN_TREND: 1,
     DayType.NORMAL_TREND: 2,
     DayType.EARLY_IMPULSE_SIDEWAYS: 3,
-    DayType.RANGE_CHOPPY: 4,
-    DayType.EXPIRY_DISTORTION: 4,  # Same severity as choppy
-    DayType.VOLATILITY_SPIKE: 5,    # v2.4: Most hostile
+    DayType.FAST_REGIME_FLIP: 4,
+    DayType.ROTATIONAL_EXPANSION: 5,
+    DayType.RANGE_CHOPPY: 6,
+    DayType.LIQUIDITY_SWEEP_TRAP: 7,
+    DayType.EXPIRY_DISTORTION: 8,
+    DayType.VOLATILITY_SPIKE: 8,    # Same severity as expiry
 }
 
 # Immediate downgrade (no confirmation needed)
 IMMEDIATE_DOWNGRADE = [
     DayType.RANGE_CHOPPY,
     DayType.EXPIRY_DISTORTION,
-    DayType.VOLATILITY_SPIKE,  # v2.4: Added
+    DayType.VOLATILITY_SPIKE,
+    DayType.LIQUIDITY_SWEEP_TRAP,   # v3.1: Hard lock, most dangerous trap
 ]
 
 
@@ -243,12 +278,15 @@ SYSTEM_STOP_TRIGGERS = {
 # EXPECTED TRADE COUNTS (v2.4 CALIBRATED - Realistic Targets)
 # ===================================================================
 EXPECTED_TRADE_COUNT = {
-    DayType.CLEAN_TREND: (3, 5),           # v2.4: More realistic
-    DayType.NORMAL_TREND: (2, 3),          # v2.4: Balanced
+    DayType.CLEAN_TREND: (3, 5),
+    DayType.NORMAL_TREND: (2, 3),
     DayType.EARLY_IMPULSE_SIDEWAYS: (0, 1),
     DayType.RANGE_CHOPPY: (0, 0),
-    DayType.VOLATILITY_SPIKE: (0, 0),       # v2.4: Added
+    DayType.VOLATILITY_SPIKE: (0, 0),
     DayType.EXPIRY_DISTORTION: (0, 1),
+    DayType.ROTATIONAL_EXPANSION: (0, 1),    # v3.1: Max 1 trade
+    DayType.LIQUIDITY_SWEEP_TRAP: (0, 0),    # v3.1: All trades blocked
+    DayType.FAST_REGIME_FLIP: (0, 1),        # v3.1: Max 1 after flip
 }
 
 

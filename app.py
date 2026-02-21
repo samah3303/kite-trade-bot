@@ -24,18 +24,18 @@ kite = KiteConnect(api_key=API_KEY)
 
 # Bot Selection
 if USE_RIJIN:
-    print("🧠 Loading RIJIN SYSTEM v3.0.1...")
+    print("[RIJIN] Loading RIJIN SYSTEM v3.0.1...")
     # Import the new RIJIN v3.0.1 live engine
     try:
         import rijin_live_runner  # We'll create this wrapper
         active_bot = rijin_live_runner
         bot_mode = "RIJIN v3.0.1"
     except ImportError:
-        print("⚠️ rijin_live_runner not found, falling back to unified engine")
+        print("[WARN] rijin_live_runner not found, falling back to unified engine")
         active_bot = bot.runner
         bot_mode = "UNIFIED"
 else:
-    print("📊 Loading Unified Engine...")
+    print("[ENGINE] Loading Unified Engine...")
     active_bot = bot.runner
     bot_mode = "UNIFIED"
 
@@ -213,10 +213,10 @@ except ImportError:
 
 if __name__ == "__main__":
     print(f"\n{'='*60}")
-    print(f"🚀 Starting Flask Dashboard")
-    print(f"📊 Mode: {bot_mode}")
+    print(f"Starting Flask Dashboard")
+    print(f"Mode: {bot_mode}")
     if USE_RIJIN:
-        print(f"🧠 RIJIN SYSTEM v2.3 - Context-Aware Execution")
+        print(f"RIJIN SYSTEM v3.0.1 - Impulse-Based Timing")
     print(f"{'='*60}\n")
     
     app.run(host='0.0.0.0', port=5000)
