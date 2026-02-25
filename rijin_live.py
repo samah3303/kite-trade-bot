@@ -202,7 +202,7 @@ class RijinLiveEngine:
             return []
     
     def calculate_indicators(self, candles):
-        """Calculate EMA, ATR, RSI"""
+        """Calculate EMA, ATR, RSI, Slope"""
         if len(candles) < 30:
             return None
         
@@ -217,10 +217,16 @@ class RijinLiveEngine:
         if len(ema20) == 0 or len(atr) == 0 or len(rsi) == 0:
             return None
         
+        # Slope: EMA20 change over last 3 values
+        slope = 0.0
+        if len(ema20) >= 4:
+            slope = float(ema20[-1]) - float(ema20[-4])
+        
         return {
             'ema20': float(ema20[-1]),
             'atr': float(atr[-1]),
             'rsi': float(rsi[-1]),
+            'slope': slope,
         }
     
     def check_consecutive_loss_pause(self):
@@ -535,7 +541,22 @@ class RijinLiveEngine:
                     continue
                 
                 # Classify day type (every 30 min)
-                # (Simplified - full implementation would track properly)
+                should_classify = False
+                if not self.day_type_engine.last_check_time:
+                    should_classify = True  # First classification of the day
+                elif (now - self.day_type_engine.last_check_time).total_seconds() >= 1800:  # 30 min
+                    should_classify = True
+                
+                if should_classify and not self.day_type_engine.day_locked:
+                    is_expiry = now.weekday() == 1  # Tuesday for NIFTY
+                    new_type, reason = self.day_type_engine.classify_day(
+                        candles, [],  # No 30m candles needed (5m is sufficient)
+                        indicators, is_expiry
+                    )
+                    updated, message = self.day_type_engine.update_day_type(new_type, reason, now)
+                    if updated and message:
+                        logging.info(message)
+                        send_telegram_message(f"{message}\n\nReason: {reason}\n\n⏰ {now.strftime('%H:%M:%S')}")
                 
                 # Check system stop
                 should_stop, stop_reason = self.system_stop.check_stop_conditions(

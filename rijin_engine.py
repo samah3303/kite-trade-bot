@@ -888,10 +888,6 @@ class ExecutionGates:
                 expansion = impulse_engine.get_expansion_from_impulse(price)
                 threshold_multiple = EXECUTION_GATES['exhaustion_atr_multiple']
                 
-                # v3.1: Regime-aware exhaustion threshold
-                if hasattr(self, '_day_type_override'):
-                    pass  # Will be handled by caller
-                
                 if expansion > threshold_multiple:
                     return False, f"Move exhausted (Expansion {expansion:.1f}× ATR from impulse, threshold {threshold_multiple}×)"
                 
