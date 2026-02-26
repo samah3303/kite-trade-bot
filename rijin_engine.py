@@ -17,6 +17,9 @@ from datetime import datetime, timedelta, time as dtime
 from enum import Enum
 from collections import deque
 import traceback
+import pytz
+
+_IST = pytz.timezone('Asia/Kolkata')
 
 from rijin_config import *
 
@@ -107,7 +110,8 @@ class DayTypeEngine:
             # === DANGEROUS TYPES FIRST (highest severity) ===
             
             # 1. EXPIRY_DISTORTION (severity 8)
-            if is_expiry_day and datetime.now().time() > dtime(12, 0):
+            ist_now = datetime.now(_IST)
+            if is_expiry_day and ist_now.time() > dtime(12, 0):
                 return DayType.EXPIRY_DISTORTION, "Expiry day post-noon"
             
             # 2. LIQUIDITY_SWEEP_TRAP (severity 7)

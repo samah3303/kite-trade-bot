@@ -10,8 +10,16 @@ import time
 import logging
 import threading
 from datetime import datetime, timedelta, time as dtime
+import pytz
 from dotenv import load_dotenv
 from kiteconnect import KiteConnect
+
+# === IST TIMEZONE (CRITICAL FOR RENDER/UTC SERVERS) ===
+IST = pytz.timezone('Asia/Kolkata')
+
+def now_ist():
+    """Single source of truth for current IST time. Use everywhere instead of datetime.now()."""
+    return datetime.now(IST)
 
 # RIJIN Core Components
 from rijin_engine import (
@@ -144,12 +152,12 @@ class RijinLiveEngine:
             f"⚠️ <b>RIJIN ERROR</b>\n\n"
             f"{error_msg}\n"
             f"{'(repeated ' + str(self._error_count) + ' times)' if self._error_count > 1 else ''}\n"
-            f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+            f"⏰ {now_ist().strftime('%H:%M:%S')}"
         )
     
     def reset_daily_state(self):
         """Reset state for new trading day"""
-        self.today = datetime.now().date()
+        self.today = now_ist().date()
         self.impulse_engine.reset_for_new_day()
         self.day_type_engine.reset_for_new_day()
         self.system_stop.reset_for_new_day()
@@ -181,8 +189,8 @@ class RijinLiveEngine:
                 return []
         
         try:
-            from_date = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
-            to_date = datetime.now()
+            from_date = now_ist().replace(hour=9, minute=0, second=0, microsecond=0)
+            to_date = now_ist()
             
             data = self.kite.historical_data(
                 instrument_token=self.instrument_token,
@@ -232,7 +240,7 @@ class RijinLiveEngine:
     def check_consecutive_loss_pause(self):
         """Check if trading is paused due to consecutive losses"""
         if self.pause_until:
-            now = datetime.now()
+            now = now_ist()
             if now < self.pause_until:
                 remaining = int((self.pause_until - now).total_seconds() / 60)
                 return True, f"Paused for {remaining} more minutes (consecutive loss protection)"
@@ -251,7 +259,7 @@ class RijinLiveEngine:
         Apply RIJIN v3.1 execution gates (regime-aware)
         Returns: (allowed, reason)
         """
-        current_time = datetime.now()
+        current_time = now_ist()
         day_type = self.day_type_engine.current_day_type
         
         # Check consecutive loss pause FIRST
@@ -314,7 +322,7 @@ class RijinLiveEngine:
             return False, gate_3_reason
         
         # Mode Permission
-        is_expiry = datetime.now().weekday() == 1  # Tuesday for NIFTY
+        is_expiry = now_ist().weekday() == 1  # Tuesday for NIFTY
         perm_pass, perm_reason = ModePermissionChecker.check_mode_f(
             day_type, current_time, is_expiry
         )
@@ -375,13 +383,13 @@ class RijinLiveEngine:
             f"💰 Risk: Rs.{int(INITIAL_CAPITAL * RISK_PER_TRADE):,}\n"
             f"📈 RSI: {signal['rsi']:.1f}\n"
             f"📏 ATR: {signal['atr']:.1f}\n\n"
-            f"⏰ Time: {datetime.now().strftime('%H:%M:%S')}"
+            f"⏰ Time: {now_ist().strftime('%H:%M:%S')}"
         )
         
         # Store active trade
         self.active_trade = {
             **signal,
-            'entry_time': datetime.now(),
+            'entry_time': now_ist(),
             'quantity': quantity,
         }
         
@@ -444,12 +452,12 @@ class RijinLiveEngine:
         # Update consecutive losses
         if exit_type == 'SL':
             self.consecutive_losses += 1
-            self.system_stop.register_sl(datetime.now())
+            self.system_stop.register_sl(now_ist())
             
             # Check if pause needed
             if self.consecutive_losses >= CONSECUTIVE_LOSS_LIMIT['max_consecutive_losses']:
                 pause_duration = CONSECUTIVE_LOSS_LIMIT['pause_duration_minutes']
-                self.pause_until = datetime.now() + timedelta(minutes=pause_duration)
+                self.pause_until = now_ist() + timedelta(minutes=pause_duration)
                 
                 logging.warning(f"⚠️ {self.consecutive_losses} CONSECUTIVE LOSSES - PAUSED FOR {pause_duration} MIN")
                 
@@ -473,7 +481,7 @@ class RijinLiveEngine:
             f"P&L: <b>{pnl_r:+.2f}R</b>\n"
             f"Daily P&L: {self.daily_pnl_r:+.2f}R\n"
             f"Daily Trades: {self.daily_trades}\n\n"
-            f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+            f"⏰ {now_ist().strftime('%H:%M:%S')}"
         )
         
         # Clear active trade
@@ -506,7 +514,7 @@ class RijinLiveEngine:
         
         while not self._stop_event.is_set():
             try:
-                now = datetime.now()
+                now = now_ist()
                 current_time = now.time()
                 
                 # Reset daily state if new day
@@ -523,6 +531,24 @@ class RijinLiveEngine:
                 if len(candles) < 30:
                     self._stop_event.wait(30)
                     continue
+                
+                # === STALE DATA REJECTION (Render wake-up protection) ===
+                try:
+                    last_candle_time = candles[-1]['date']
+                    if isinstance(last_candle_time, datetime):
+                        # Make timezone-aware if naive
+                        if last_candle_time.tzinfo is None:
+                            last_candle_time = IST.localize(last_candle_time)
+                        candle_age_seconds = (now - last_candle_time).total_seconds()
+                        if candle_age_seconds > 420:  # 7 minutes
+                            logging.warning(
+                                f"Stale data detected: last candle is {candle_age_seconds/60:.1f}m old. "
+                                f"Market likely closed or data delayed. Skipping."
+                            )
+                            self._stop_event.wait(60)
+                            continue
+                except Exception as e:
+                    logging.warning(f"Stale data check failed: {e}")
                 
                 # Calculate indicators
                 indicators = self.calculate_indicators(candles)
