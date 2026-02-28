@@ -1,6 +1,9 @@
 """
-RIJIN v3.0.1 - LIVE TRADING ENGINE
-Production-Ready System with Impulse-Based Timing & Consecutive Loss Protection
+RIJIN v3.0.1 - LIVE TRADING ENGINE (AI-FILTERED)
+Architecture: Signal Engine (MODE_F) → AI Validator (Gemini) → Telegram Alert
+
+NO gate logic. NO regime downgrades. NO system stops.
+AI layer acts as constrained quality filter — ACCEPT or RESTRICT only.
 
 Deploy: python rijin_live.py
 """
@@ -18,26 +21,14 @@ from kiteconnect import KiteConnect
 IST = pytz.timezone('Asia/Kolkata')
 
 def now_ist():
-    """Single source of truth for current IST time. Use everywhere instead of datetime.now()."""
+    """Single source of truth for current IST time."""
     return datetime.now(IST)
 
-# RIJIN Core Components
-from rijin_engine import (
-    ImpulseDetectionEngine,
-    TrendPhaseEngine,
-    DayTypeEngine,
-    ExecutionGates,
-    SystemStopManager,
-    ModePermissionChecker,
-)
-from rijin_config import (
-    DayType,
-    CONSECUTIVE_LOSS_LIMIT,
-    TRADING_CUTOFF,
-)
-
-# Signal Engines
+# Signal Engine
 from mode_f_engine import ModeFEngine
+
+# AI Validator
+from gemini_helper import gemini
 
 # Utilities
 from unified_engine import (
@@ -61,19 +52,25 @@ NIFTY_INSTRUMENT = os.getenv("NIFTY_INSTRUMENT", "NSE:NIFTY 50")
 INITIAL_CAPITAL = 100000  # Rs.1,00,000
 RISK_PER_TRADE = 0.01     # 1% = 1R = Rs.1,000
 
+# AI Filter Settings
+USE_AI_FILTER = True       # Set False to skip Gemini (all signals ACCEPT)
+AI_CALL_DELAY = 2        # Seconds between Groq calls
+
 
 # ===================================================================
-# RIJIN LIVE TRADING ENGINE
+# RIJIN LIVE TRADING ENGINE (AI-FILTERED)
 # ===================================================================
 class RijinLiveEngine:
     """
-    RIJIN v3.0.1 Live Trading Engine
+    RIJIN v3.0.1 Live Trading Engine — AI-Filtered Architecture
     
-    Features:
-    - Impulse-based phase detection
-    - Consecutive loss protection
-    - Day type awareness
-    - Real MODE_F signal generation
+    Clean layered flow:
+      1. Feature Extraction (EMA, ATR, RSI, VWAP, Slope)
+      2. Signal Engine (MODE_F — 3-Gear)
+      3. AI Validator (Gemini — ACCEPT/RESTRICT)
+      4. Telegram Alert Delivery
+    
+    No gates. No regime blocks. No mid-session reclassification.
     """
     
     def __init__(self, stop_event=None):
@@ -88,19 +85,14 @@ class RijinLiveEngine:
         self.instrument_token = None
         self._resolve_instrument_token()
         
-        # RIJIN Components
-        self.impulse_engine = ImpulseDetectionEngine()
-        self.day_type_engine = DayTypeEngine()
-        self.system_stop = SystemStopManager()
+        # Signal Engine
         self.mode_f_engine = ModeFEngine()
         
         # State
         self.active_trade = None
-        self.consecutive_losses = 0
-        self.pause_until = None
         self.last_check_time = None
         
-        # Error tracking (avoid spamming Telegram with same error)
+        # Error tracking (avoid spamming Telegram)
         self._last_error_msg = None
         self._error_count = 0
         
@@ -109,18 +101,25 @@ class RijinLiveEngine:
         self.daily_trades = 0
         self.daily_pnl_r = 0.0
         
+        # AI Stats (daily)
+        self.ai_total_calls = 0
+        self.ai_accepts = 0
+        self.ai_restricts = 0
+        self.ai_failures = 0
+        
         logging.info("="*60)
-        logging.info("RIJIN v3.0.1 - LIVE TRADING ENGINE INITIALIZED")
+        logging.info("RIJIN v3.0.1 - AI-FILTERED LIVE ENGINE")
+        logging.info("Signal Engine → AI Validator → Telegram Alert")
         logging.info("="*60)
         logging.info(f"Instrument: {NIFTY_INSTRUMENT}")
         logging.info(f"Instrument Token: {self.instrument_token}")
+        logging.info(f"AI Filter: {'ENABLED' if USE_AI_FILTER else 'DISABLED'}")
         logging.info(f"Capital: Rs.{INITIAL_CAPITAL:,}")
         logging.info(f"Risk per trade: {RISK_PER_TRADE*100}% = Rs.{int(INITIAL_CAPITAL*RISK_PER_TRADE):,}")
-        logging.info(f"Consecutive loss limit: {CONSECUTIVE_LOSS_LIMIT['max_consecutive_losses']}")
         logging.info("="*60)
     
     def _resolve_instrument_token(self):
-        """Resolve instrument token ONCE at startup, with Telegram error alert"""
+        """Resolve instrument token ONCE at startup"""
         try:
             ltp_data = self.kite.ltp(NIFTY_INSTRUMENT)
             self.instrument_token = ltp_data[NIFTY_INSTRUMENT]['instrument_token']
@@ -141,7 +140,6 @@ class RijinLiveEngine:
         """Send error to Telegram, with dedup to avoid spam"""
         if error_msg == self._last_error_msg:
             self._error_count += 1
-            # Only send every 10th repeat
             if self._error_count % 10 != 0:
                 return
         else:
@@ -158,32 +156,33 @@ class RijinLiveEngine:
     def reset_daily_state(self):
         """Reset state for new trading day"""
         self.today = now_ist().date()
-        self.impulse_engine.reset_for_new_day()
-        self.day_type_engine.reset_for_new_day()
-        self.system_stop.reset_for_new_day()
         self.daily_trades = 0
         self.daily_pnl_r = 0.0
-        self.consecutive_losses = 0
-        self.pause_until = None
+        self.ai_total_calls = 0
+        self.ai_accepts = 0
+        self.ai_restricts = 0
+        self.ai_failures = 0
         
         logging.info(f"\n{'='*60}")
         logging.info(f"NEW TRADING DAY: {self.today}")
         logging.info(f"{'='*60}\n")
         
-        # Send Telegram notification
         send_telegram_message(
-            f"🟢 <b>RIJIN v3.0.1 - NEW DAY</b>\n\n"
+            f"🟢 <b>RIJIN v3.0.1 AI-FILTERED - NEW DAY</b>\n\n"
             f"📅 Date: {self.today}\n"
             f"💰 Capital: Rs.{INITIAL_CAPITAL:,}\n"
             f"🎯 Risk: Rs.{int(INITIAL_CAPITAL*RISK_PER_TRADE):,} per trade\n"
-            f"🛡️ Max consecutive losses: {CONSECUTIVE_LOSS_LIMIT['max_consecutive_losses']}\n\n"
+            f"🤖 AI Filter: {'ENABLED' if USE_AI_FILTER else 'DISABLED'}\n\n"
             f"System active. Monitoring for signals..."
         )
     
+    # ---------------------------------------------------------------
+    # DATA FETCHING
+    # ---------------------------------------------------------------
+    
     def fetch_candles_5m(self, limit=100):
-        """Fetch latest 5-minute candles from Kite using cached instrument token"""
+        """Fetch latest 5-minute candles from Kite"""
         if not self.instrument_token:
-            # Try to resolve again (maybe token was refreshed)
             self._resolve_instrument_token()
             if not self.instrument_token:
                 return []
@@ -209,6 +208,10 @@ class RijinLiveEngine:
             self._send_error_telegram(error_msg)
             return []
     
+    # ---------------------------------------------------------------
+    # FEATURE EXTRACTION
+    # ---------------------------------------------------------------
+    
     def calculate_indicators(self, candles):
         """Calculate EMA, ATR, RSI, Slope"""
         if len(candles) < 30:
@@ -225,7 +228,6 @@ class RijinLiveEngine:
         if len(ema20) == 0 or len(atr) == 0 or len(rsi) == 0:
             return None
         
-        # Slope: EMA20 change over last 3 values
         slope = 0.0
         if len(ema20) >= 4:
             slope = float(ema20[-1]) - float(ema20[-4])
@@ -237,104 +239,246 @@ class RijinLiveEngine:
             'slope': slope,
         }
     
-    def check_consecutive_loss_pause(self):
-        """Check if trading is paused due to consecutive losses"""
-        if self.pause_until:
-            now = now_ist()
-            if now < self.pause_until:
-                remaining = int((self.pause_until - now).total_seconds() / 60)
-                return True, f"Paused for {remaining} more minutes (consecutive loss protection)"
-            else:
-                # Pause expired
-                self.pause_until = None
-                self.consecutive_losses = 0
-                logging.info("Consecutive loss pause EXPIRED - resuming trading")
-                send_telegram_message("✅ <b>Trading Resumed</b>\n\nConsecutive loss pause expired.")
-                return False, None
-        
-        return False, None
+    def calculate_vwap(self, candles):
+        """Volume-weighted average price for the session"""
+        try:
+            total_vol = sum(c.get('volume', 1) for c in candles)
+            if total_vol == 0:
+                return float(candles[-1]['close'])
+            vwap = sum(
+                ((float(c['high']) + float(c['low']) + float(c['close'])) / 3) * c.get('volume', 1)
+                for c in candles
+            ) / total_vol
+            return vwap
+        except:
+            return float(candles[-1]['close'])
     
-    def apply_rijin_gates(self, signal, candles, indicators):
-        """
-        Apply RIJIN v3.1 execution gates (regime-aware)
-        Returns: (allowed, reason)
-        """
-        current_time = now_ist()
-        day_type = self.day_type_engine.current_day_type
-        
-        # Check consecutive loss pause FIRST
-        paused, reason = self.check_consecutive_loss_pause()
-        if paused:
-            return False, reason
-        
-        # ====== v3.1: REGIME-SPECIFIC HARD BLOCKS ======
-        
-        # LIQUIDITY_SWEEP_TRAP: Block ALL trades
-        if day_type == DayType.LIQUIDITY_SWEEP_TRAP:
-            return False, f"HARD BLOCK: {day_type.value} - All trades disabled"
-        
-        # ROTATIONAL_EXPANSION: Max 1 trade per day
-        if day_type == DayType.ROTATIONAL_EXPANSION and self.daily_trades >= 1:
-            return False, f"ROTATIONAL_EXPANSION: Max 1 trade reached ({self.daily_trades} taken)"
-        
-        # FAST_REGIME_FLIP: Max 1 trade + stricter RSI
-        if day_type == DayType.FAST_REGIME_FLIP:
-            if self.daily_trades >= 1:
-                return False, f"FAST_REGIME_FLIP: Max 1 trade reached ({self.daily_trades} taken)"
-            rsi = indicators.get('rsi', 50)
-            if signal['direction'] == 'BUY' and rsi < 55:
-                return False, f"FAST_REGIME_FLIP: RSI too low for BUY ({rsi:.1f} < 55)"
-            if signal['direction'] == 'SELL' and rsi > 45:
-                return False, f"FAST_REGIME_FLIP: RSI too high for SELL ({rsi:.1f} > 45)"
-        
-        # ====== STANDARD GATES ======
-        
-        # Phase Filter (impulse-based v3.0)
-        phase_allowed, phase_reason, phase, expansion = TrendPhaseEngine.is_mode_f_allowed(
-            candles, indicators, signal['direction'], self.impulse_engine
-        )
-        
-        if not phase_allowed:
-            return False, f"Phase Filter: {phase_reason}"
-        
-        # Execution Gate 1: Move Exhaustion (impulse-based)
-        gate_1_pass, gate_1_reason = ExecutionGates.gate_1_move_exhaustion(
-            candles, indicators, signal['direction'], self.impulse_engine
-        )
-        
-        if not gate_1_pass:
-            return False, gate_1_reason
-        
-        # Execution Gate 2: Time + Day Type
-        gate_2_pass, gate_2_reason = ExecutionGates.gate_2_time_day_type(
-            current_time, day_type
-        )
-        
-        if not gate_2_pass:
-            return False, gate_2_reason
-        
-        # Execution Gate 3: RSI Compression
-        gate_3_pass, gate_3_reason = ExecutionGates.gate_3_rsi_compression(
-            candles, indicators
-        )
-        
-        if not gate_3_pass:
-            return False, gate_3_reason
-        
-        # Mode Permission
-        is_expiry = now_ist().weekday() == 1  # Tuesday for NIFTY
-        perm_pass, perm_reason = ModePermissionChecker.check_mode_f(
-            day_type, current_time, is_expiry
-        )
-        
-        if not perm_pass:
-            return False, perm_reason
-        
-        # All gates passed
-        return True, f"ALLOWED - Phase: {phase} ({expansion:.1f}× ATR from impulse)"
+    def build_market_context(self, candles, indicators):
+        """Build market context JSON for AI evaluation"""
+        now = now_ist()
+        price = float(candles[-1]['close'])
+        vwap = self.calculate_vwap(candles)
+
+        # Session extremes
+        session_high = max(float(c['high']) for c in candles)
+        session_low = min(float(c['low']) for c in candles)
+
+        # Time context
+        time_str = now.strftime('%H:%M')
+        market_open = now.replace(hour=9, minute=15, second=0)
+        minutes_since_open = int((now - market_open).total_seconds() / 60)
+
+        # Session phase
+        if minutes_since_open < 30:
+            session_phase = "Opening"
+        elif minutes_since_open < 90:
+            session_phase = "Morning"
+        elif minutes_since_open < 210:
+            session_phase = "Midday"
+        elif minutes_since_open < 300:
+            session_phase = "Afternoon"
+        else:
+            session_phase = "Closing"
+
+        # Trend detection
+        slope = indicators['slope']
+        if slope > 5:
+            trend = "Bullish"
+        elif slope < -5:
+            trend = "Bearish"
+        else:
+            trend = "Sideways"
+
+        # Day type
+        session_range = session_high - session_low
+        atr = indicators['atr']
+        range_vs_atr = session_range / atr if atr > 0 else 0
+
+        if range_vs_atr > 2.0 and trend == "Bullish":
+            day_type = "Bullish Expansion"
+        elif range_vs_atr > 2.0 and trend == "Bearish":
+            day_type = "Bearish Expansion"
+        elif range_vs_atr > 1.5:
+            day_type = "Trending"
+        elif range_vs_atr > 0.8:
+            day_type = "Normal Range"
+        else:
+            day_type = "Narrow Range"
+
+        # VWAP distance %
+        price_vs_vwap_pct = ((price - vwap) / vwap * 100) if vwap > 0 else 0
+
+        # Distance from session extremes
+        distance_from_low_pct = ((price - session_low) / session_low * 100) if session_low > 0 else 0
+        distance_from_high_pct = ((session_high - price) / session_high * 100) if session_high > 0 else 0
+
+        # RSI slope
+        rsi = indicators['rsi']
+        if len(candles) >= 4:
+            closes_3ago = [float(c['close']) for c in candles[:-3]]
+            rsi_3ago_list = calculate_rsi(closes_3ago, 14)
+            rsi_3ago = float(rsi_3ago_list[-1]) if len(rsi_3ago_list) > 0 else rsi
+            rsi_diff = rsi - rsi_3ago
+            if rsi_diff > 3:
+                rsi_slope = "Rising"
+            elif rsi_diff < -3:
+                rsi_slope = "Falling"
+            else:
+                rsi_slope = "Flat"
+        else:
+            rsi_slope = "Flat"
+
+        # Expansion legs
+        expansion_legs = self._count_expansion_legs(candles)
+        avg_leg_size = self._avg_leg_size(candles)
+        current_leg = self._current_leg_size(candles)
+        current_leg_vs_avg = round(current_leg / avg_leg_size, 1) if avg_leg_size > 0 else 1.0
+
+        # Volatility state
+        atr_pct = (atr / price * 100) if price > 0 else 0
+        if atr_pct < 0.10:
+            volatility_state = "Contracting"
+        elif atr_pct < 0.25:
+            volatility_state = "Normal"
+        else:
+            volatility_state = "Expanding"
+
+        # Structure
+        structure_last_5 = self._detect_structure(candles[-5:] if len(candles) >= 5 else candles)
+
+        # Pullback depth
+        pullback_depth_pct = self._calculate_pullback_depth(candles)
+
+        # Volume vs average
+        if len(candles) >= 20:
+            recent_vol = sum(c.get('volume', 0) for c in candles[-3:]) / 3
+            avg_vol = sum(c.get('volume', 0) for c in candles[-20:]) / 20
+            volume_vs_avg = round(recent_vol / avg_vol, 1) if avg_vol > 0 else 1.0
+        else:
+            volume_vs_avg = 1.0
+
+        return {
+            "time": time_str,
+            "minutes_since_open": minutes_since_open,
+            "session_phase": session_phase,
+            "day_type": day_type,
+            "trend": trend,
+            "price_vs_vwap_pct": round(price_vs_vwap_pct, 2),
+            "distance_from_session_low_pct": round(distance_from_low_pct, 2),
+            "distance_from_session_high_pct": round(distance_from_high_pct, 2),
+            "rsi": round(rsi, 0),
+            "rsi_slope": rsi_slope,
+            "expansion_legs": expansion_legs,
+            "current_leg_vs_avg": current_leg_vs_avg,
+            "volatility_state": volatility_state,
+            "structure_last_5": structure_last_5,
+            "pullback_depth_pct": pullback_depth_pct,
+            "volume_vs_avg": volume_vs_avg,
+        }
+
+    # ---------------------------------------------------------------
+    # MARKET STRUCTURE HELPERS
+    # ---------------------------------------------------------------
+
+    def _count_expansion_legs(self, candles):
+        """Count directional expansion legs"""
+        if len(candles) < 3:
+            return 0
+        legs = 0
+        prev_dir = None
+        for i in range(1, len(candles)):
+            c = float(candles[i]['close'])
+            o = float(candles[i]['open'])
+            curr_dir = "UP" if c > o else "DOWN"
+            if curr_dir != prev_dir and prev_dir is not None:
+                legs += 1
+            prev_dir = curr_dir
+        return max(1, legs)
+
+    def _avg_leg_size(self, candles):
+        """Average leg size in points"""
+        if len(candles) < 3:
+            return 1.0
+        legs = []
+        leg_start = float(candles[0]['close'])
+        prev_dir = None
+        for i in range(1, len(candles)):
+            c = float(candles[i]['close'])
+            o = float(candles[i]['open'])
+            curr_dir = "UP" if c > o else "DOWN"
+            if curr_dir != prev_dir and prev_dir is not None:
+                legs.append(abs(c - leg_start))
+                leg_start = c
+            prev_dir = curr_dir
+        if legs:
+            return sum(legs) / len(legs)
+        return abs(float(candles[-1]['close']) - float(candles[0]['close'])) or 1.0
+
+    def _current_leg_size(self, candles):
+        """Size of the current directional leg"""
+        if len(candles) < 3:
+            return 0.0
+        last_dir = "UP" if float(candles[-1]['close']) > float(candles[-1]['open']) else "DOWN"
+        leg_start_price = float(candles[-1]['close'])
+        for i in range(len(candles) - 2, -1, -1):
+            c = float(candles[i]['close'])
+            o = float(candles[i]['open'])
+            curr_dir = "UP" if c > o else "DOWN"
+            if curr_dir != last_dir:
+                break
+            leg_start_price = c
+        return abs(float(candles[-1]['close']) - leg_start_price)
+
+    def _detect_structure(self, candles):
+        """Detect price structure from last N candles"""
+        if len(candles) < 3:
+            return "Insufficient data"
+        highs = [float(c['high']) for c in candles]
+        lows = [float(c['low']) for c in candles]
+
+        hh = all(highs[i] >= highs[i-1] for i in range(1, len(highs)))
+        hl = all(lows[i] >= lows[i-1] for i in range(1, len(lows)))
+        lh = all(highs[i] <= highs[i-1] for i in range(1, len(highs)))
+        ll = all(lows[i] <= lows[i-1] for i in range(1, len(lows)))
+
+        if hh and hl:
+            return "HH-HL continuation"
+        elif lh and ll:
+            return "LH-LL continuation"
+        elif hh and ll:
+            return "Expanding range"
+        elif lh and hl:
+            return "Contracting range"
+        elif hh:
+            return "Higher highs"
+        elif ll:
+            return "Lower lows"
+        else:
+            return "Choppy / No structure"
+
+    def _calculate_pullback_depth(self, candles):
+        """Pullback depth as % of last swing"""
+        if len(candles) < 10:
+            return 0
+        recent = candles[-20:] if len(candles) >= 20 else candles
+        swing_high = max(float(c['high']) for c in recent)
+        swing_low = min(float(c['low']) for c in recent)
+        swing_range = swing_high - swing_low
+        if swing_range == 0:
+            return 0
+        current_price = float(candles[-1]['close'])
+        if current_price > (swing_high + swing_low) / 2:
+            pullback = swing_high - current_price
+        else:
+            pullback = current_price - swing_low
+        return round((pullback / swing_range) * 100)
+
+    # ---------------------------------------------------------------
+    # SIGNAL ENGINE
+    # ---------------------------------------------------------------
     
     def generate_signal(self, candles, indicators):
-        """Generate MODE_F signal using production engine"""
+        """Generate MODE_F signal"""
         try:
             res = self.mode_f_engine.predict(candles, global_bias="NEUTRAL")
             
@@ -355,42 +499,91 @@ class RijinLiveEngine:
             logging.error(f"Signal generation error: {e}")
             return None
     
-    def execute_trade(self, signal):
-        """Execute trade (paper or live)"""
-        # Calculate position size
+    # ---------------------------------------------------------------
+    # AI VALIDATION LAYER
+    # ---------------------------------------------------------------
+    
+    def validate_signal_with_ai(self, market_context, signal):
+        """
+        Send signal to Gemini AI for ACCEPT/RESTRICT decision.
+        Falls back to ACCEPT on any failure.
+        """
+        if not USE_AI_FILTER:
+            return {"decision": "ACCEPT", "confidence": 100, "reasons": ["AI filter disabled"]}
+
+        # Build signal in standard format
         risk = abs(signal['entry'] - signal['sl'])
-        quantity = int((INITIAL_CAPITAL * RISK_PER_TRADE) / risk)
+        reward = abs(signal['target'] - signal['entry'])
+        rr_ratio = f"1:{reward / risk:.0f}" if risk > 0 else "1:0"
+
+        signal_data = {
+            "direction": "SHORT" if signal['direction'] == 'SELL' else "LONG",
+            "entry": signal['entry'],
+            "sl": signal['sl'],
+            "rr": rr_ratio,
+        }
+
+        self.ai_total_calls += 1
+
+        result = gemini.evaluate_trade_quality(market_context, signal_data)
+
+        if result is None:
+            self.ai_failures += 1
+            return {"decision": "ACCEPT", "confidence": 50, "reasons": ["AI unavailable — defaulting to ACCEPT"]}
+
+        if result['decision'] == 'ACCEPT':
+            self.ai_accepts += 1
+        else:
+            self.ai_restricts += 1
+
+        time.sleep(AI_CALL_DELAY)
+        return result
+    
+    # ---------------------------------------------------------------
+    # TRADE MANAGEMENT
+    # ---------------------------------------------------------------
+    
+    def execute_trade(self, signal, ai_result):
+        """Send trade alert to Telegram (no broker execution)"""
+        risk = abs(signal['entry'] - signal['sl'])
+        quantity = int((INITIAL_CAPITAL * RISK_PER_TRADE) / risk) if risk > 0 else 0
+        direction_label = "SHORT" if signal['direction'] == 'SELL' else "LONG"
+        
+        reward = abs(signal['target'] - signal['entry'])
+        rr_ratio = f"1:{reward / risk:.0f}" if risk > 0 else "1:0"
         
         logging.info(f"\n{'='*60}")
-        logging.info(f"EXECUTING TRADE")
+        logging.info(f"📊 SIGNAL ACCEPTED BY AI")
         logging.info(f"{'='*60}")
-        logging.info(f"Direction: {signal['direction']}")
-        logging.info(f"Entry: {signal['entry']}")
-        logging.info(f"SL: {signal['sl']}")
-        logging.info(f"Target: {signal['target']}\nQuantity: {quantity}")
-        logging.info(f"Risk: Rs.{int(INITIAL_CAPITAL * RISK_PER_TRADE):,} (1R)")
+        logging.info(f"Direction: {direction_label}")
+        logging.info(f"Entry: {signal['entry']}  SL: {signal['sl']}  RR: {rr_ratio}")
+        logging.info(f"AI: {ai_result['decision']} ({ai_result['confidence']}%)")
         logging.info(f"{'='*60}\n")
         
         # Send Telegram alert
+        reasons_text = ''.join('• ' + r + '\n' for r in ai_result['reasons'][:3])
         send_telegram_message(
-            f"🎯 <b>RIJIN SIGNAL</b>\n\n"
-            f"📊 Mode: {signal['mode']} ({signal['gear']})\n"
-            f"📍 Direction: <b>{signal['direction']}</b>\n"
+            f"🎯 <b>RIJIN SIGNAL — AI ACCEPTED</b>\n\n"
+            f"📅 {now_ist().strftime('%d %b %Y')} | ⏰ {now_ist().strftime('%H:%M:%S')}\n\n"
+            f"📍 Direction: <b>{direction_label}</b>\n"
             f"💵 Entry: {signal['entry']}\n"
             f"🛑 SL: {signal['sl']}\n"
             f"🎯 Target: {signal['target']}\n"
-            f"📦 Quantity: {quantity}\n"
-            f"💰 Risk: Rs.{int(INITIAL_CAPITAL * RISK_PER_TRADE):,}\n"
-            f"📈 RSI: {signal['rsi']:.1f}\n"
-            f"📏 ATR: {signal['atr']:.1f}\n\n"
-            f"⏰ Time: {now_ist().strftime('%H:%M:%S')}"
+            f"📊 RR: {rr_ratio}\n"
+            f"📦 Qty: {quantity}\n"
+            f"💰 Risk: Rs.{int(INITIAL_CAPITAL * RISK_PER_TRADE):,}\n\n"
+            f"🤖 <b>AI: {ai_result['decision']}</b> ({ai_result['confidence']}%)\n"
+            f"{reasons_text}\n"
+            f"📈 RSI: {signal['rsi']:.1f} | ATR: {signal['atr']:.1f}"
         )
         
-        # Store active trade
+        # Store active trade for monitoring
         self.active_trade = {
             **signal,
             'entry_time': now_ist(),
             'quantity': quantity,
+            'ai_decision': ai_result['decision'],
+            'ai_confidence': ai_result['confidence'],
         }
         
         self.daily_trades += 1
@@ -427,7 +620,7 @@ class RijinLiveEngine:
             self.close_trade(exit_type, exit_price)
     
     def close_trade(self, exit_type, exit_price):
-        """Close active trade and update stats"""
+        """Close active trade and send Telegram alert"""
         trade = self.active_trade
         entry = trade['entry']
         sl = trade['sl']
@@ -440,60 +633,41 @@ class RijinLiveEngine:
         
         self.daily_pnl_r += pnl_r
         
+        direction_label = "SHORT" if direction == 'SELL' else "LONG"
+        
         logging.info(f"\n{'='*60}")
         logging.info(f"TRADE CLOSED: {exit_type}")
         logging.info(f"{'='*60}")
-        logging.info(f"Entry: {entry}")
-        logging.info(f"Exit: {exit_price}")
-        logging.info(f"P&L: {pnl_r:+.2f}R")
-        logging.info(f"Daily P&L: {self.daily_pnl_r:+.2f}R")
+        logging.info(f"Entry: {entry}  Exit: {exit_price}")
+        logging.info(f"P&L: {pnl_r:+.2f}R  Daily: {self.daily_pnl_r:+.2f}R")
         logging.info(f"{'='*60}\n")
-        
-        # Update consecutive losses
-        if exit_type == 'SL':
-            self.consecutive_losses += 1
-            self.system_stop.register_sl(now_ist())
-            
-            # Check if pause needed
-            if self.consecutive_losses >= CONSECUTIVE_LOSS_LIMIT['max_consecutive_losses']:
-                pause_duration = CONSECUTIVE_LOSS_LIMIT['pause_duration_minutes']
-                self.pause_until = now_ist() + timedelta(minutes=pause_duration)
-                
-                logging.warning(f"⚠️ {self.consecutive_losses} CONSECUTIVE LOSSES - PAUSED FOR {pause_duration} MIN")
-                
-                send_telegram_message(
-                    f"⚠️ <b>CONSECUTIVE LOSS PROTECTION</b>\n\n"
-                    f"Losses in a row: {self.consecutive_losses}\n"
-                    f"Trading PAUSED for {pause_duration} minutes\n"
-                    f"Resume at: {self.pause_until.strftime('%H:%M')}\n\n"
-                    f"This prevents drawdown spirals."
-                )
-        
-        elif exit_type == 'TARGET' and CONSECUTIVE_LOSS_LIMIT['reset_on_win']:
-            self.consecutive_losses = 0
         
         # Send Telegram
         emoji = "✅" if exit_type == 'TARGET' else "❌"
         send_telegram_message(
             f"{emoji} <b>TRADE CLOSED: {exit_type}</b>\n\n"
-            f"Entry: {entry}\n"
-            f"Exit: {exit_price}\n"
-            f"P&L: <b>{pnl_r:+.2f}R</b>\n"
-            f"Daily P&L: {self.daily_pnl_r:+.2f}R\n"
-            f"Daily Trades: {self.daily_trades}\n\n"
-            f"⏰ {now_ist().strftime('%H:%M:%S')}"
+            f"📅 {now_ist().strftime('%d %b %Y')} | ⏰ {now_ist().strftime('%H:%M:%S')}\n\n"
+            f"📍 {direction_label}\n"
+            f"💵 Entry: {entry} → Exit: {exit_price}\n"
+            f"💰 P&L: <b>{pnl_r:+.2f}R</b>\n"
+            f"📊 Daily P&L: {self.daily_pnl_r:+.2f}R\n"
+            f"🔢 Daily Trades: {self.daily_trades}\n\n"
+            f"🤖 AI was: {trade.get('ai_decision', 'N/A')} ({trade.get('ai_confidence', 'N/A')}%)"
         )
         
-        # Clear active trade
         self.active_trade = None
     
     def stop(self):
         """Signal the engine to stop gracefully"""
         self._stop_event.set()
     
+    # ---------------------------------------------------------------
+    # MAIN TRADING LOOP
+    # ---------------------------------------------------------------
+    
     def run(self):
-        """Main trading loop"""
-        logging.info("Starting RIJIN v3.0.1 Live Engine...\n")
+        """Main trading loop — clean layered architecture"""
+        logging.info("Starting RIJIN v3.0.1 AI-Filtered Live Engine...\n")
         
         # Startup health check
         if not self.instrument_token:
@@ -505,11 +679,12 @@ class RijinLiveEngine:
             return
         
         send_telegram_message(
-            f"🚀 <b>RIJIN v3.0.1 STARTED</b>\n\n"
+            f"🚀 <b>RIJIN v3.0.1 AI-FILTERED STARTED</b>\n\n"
             f"📊 Instrument: <code>{NIFTY_INSTRUMENT}</code>\n"
             f"🔑 Token: {self.instrument_token}\n"
-            f"💰 Capital: Rs.{INITIAL_CAPITAL:,}\n"
-            f"Live trading engine active."
+            f"🤖 AI Filter: <b>{'ENABLED' if USE_AI_FILTER else 'DISABLED'}</b>\n"
+            f"💰 Capital: Rs.{INITIAL_CAPITAL:,}\n\n"
+            f"Signal Engine → AI Validator → Telegram Alert"
         )
         
         while not self._stop_event.is_set():
@@ -532,94 +707,74 @@ class RijinLiveEngine:
                     self._stop_event.wait(30)
                     continue
                 
-                # === STALE DATA REJECTION (Render wake-up protection) ===
+                # === STALE DATA REJECTION ===
                 try:
                     last_candle_time = candles[-1]['date']
                     if isinstance(last_candle_time, datetime):
-                        # Make timezone-aware if naive
                         if last_candle_time.tzinfo is None:
                             last_candle_time = IST.localize(last_candle_time)
                         candle_age_seconds = (now - last_candle_time).total_seconds()
                         if candle_age_seconds > 420:  # 7 minutes
                             logging.warning(
-                                f"Stale data detected: last candle is {candle_age_seconds/60:.1f}m old. "
-                                f"Market likely closed or data delayed. Skipping."
+                                f"Stale data: last candle {candle_age_seconds/60:.1f}m old. Skipping."
                             )
                             self._stop_event.wait(60)
                             continue
                 except Exception as e:
                     logging.warning(f"Stale data check failed: {e}")
                 
-                # Calculate indicators
+                # ===== LAYER 1: FEATURE EXTRACTION =====
                 indicators = self.calculate_indicators(candles)
                 if not indicators:
                     self._stop_event.wait(30)
                     continue
                 
-                # Detect impulse
-                self.impulse_engine.detect_impulse(candles, indicators, now)
-                
-                # Check if we have an active trade
+                # Check active trade exit
                 if self.active_trade:
                     current_price = float(candles[-1]['close'])
                     self.check_active_trade_exit(current_price)
-                    self._stop_event.wait(10)  # Check every 10 seconds when in trade
+                    self._stop_event.wait(10)
                     continue
                 
-                # Classify day type (every 30 min)
-                should_classify = False
-                if not self.day_type_engine.last_check_time:
-                    should_classify = True  # First classification of the day
-                elif (now - self.day_type_engine.last_check_time).total_seconds() >= 1800:  # 30 min
-                    should_classify = True
-                
-                if should_classify and not self.day_type_engine.day_locked:
-                    is_expiry = now.weekday() == 1  # Tuesday for NIFTY
-                    new_type, reason = self.day_type_engine.classify_day(
-                        candles, [],  # No 30m candles needed (5m is sufficient)
-                        indicators, is_expiry
-                    )
-                    updated, message = self.day_type_engine.update_day_type(new_type, reason, now)
-                    if updated and message:
-                        logging.info(message)
-                        send_telegram_message(f"{message}\n\nReason: {reason}\n\n⏰ {now.strftime('%H:%M:%S')}")
-                
-                # Check system stop
-                should_stop, stop_reason = self.system_stop.check_stop_conditions(
-                    self.day_type_engine.current_day_type
-                )
-                
-                if should_stop:
-                    logging.warning(f"System Stop: {stop_reason}")
-                    self._stop_event.wait(300)  # Wait 5 min
-                    continue
-                
-                # Generate signal (only check every 5 minutes)
+                # ===== LAYER 2: SIGNAL ENGINE =====
+                # Only check every 5 minutes (one per candle)
                 if not self.last_check_time or (now - self.last_check_time).total_seconds() >= 300:
                     signal = self.generate_signal(candles, indicators)
                     
                     if signal:
-                        # Apply RIJIN gates
-                        allowed, reason = self.apply_rijin_gates(signal, candles, indicators)
+                        # Build market context
+                        market_context = self.build_market_context(candles, indicators)
                         
-                        if allowed:
-                            logging.info(f"✅ Signal ALLOWED: {reason}")
-                            self.execute_trade(signal)
+                        # ===== LAYER 3: AI VALIDATOR =====
+                        ai_result = self.validate_signal_with_ai(market_context, signal)
+                        
+                        if ai_result['decision'] == 'ACCEPT':
+                            # ===== LAYER 4: TELEGRAM ALERT =====
+                            logging.info(f"✅ AI ACCEPTED: {ai_result['confidence']}% confidence")
+                            self.execute_trade(signal, ai_result)
                         else:
-                            logging.info(f"❌ Signal BLOCKED: {reason}")
-                            # Send blocked signal to Telegram so user knows system is alive
+                            # AI RESTRICTED — send alert
+                            direction_label = "SHORT" if signal['direction'] == 'SELL' else "LONG"
+                            logging.info(
+                                f"⚠️ AI RESTRICTED: {direction_label} | "
+                                f"Confidence: {ai_result['confidence']}% | "
+                                f"{'; '.join(ai_result['reasons'][:2])}"
+                            )
+                            
+                            reasons_text = ''.join('• ' + r + '\n' for r in ai_result['reasons'][:3])
                             send_telegram_message(
-                                f"🚫 <b>SIGNAL BLOCKED</b>\n\n"
-                                f"📍 {signal['direction']} ({signal.get('gear', 'N/A')})\n"
-                                f"💵 Entry: {signal['entry']}\n"
-                                f"❌ Reason: {reason}\n\n"
-                                f"⏰ {now.strftime('%H:%M:%S')}"
+                                f"⚠️ <b>SIGNAL RESTRICTED BY AI</b>\n\n"
+                                f"📅 {now.strftime('%d %b %Y')} | ⏰ {now.strftime('%H:%M:%S')}\n\n"
+                                f"📍 {direction_label} ({signal.get('gear', 'N/A')})\n"
+                                f"💵 Entry: {signal['entry']} | SL: {signal['sl']}\n\n"
+                                f"🤖 <b>AI: RESTRICT</b> ({ai_result['confidence']}%)\n"
+                                f"{reasons_text}"
                             )
                     
                     self.last_check_time = now
                 
                 # Sleep before next iteration
-                self._stop_event.wait(30)  # Check every 30 seconds
+                self._stop_event.wait(30)
             
             except KeyboardInterrupt:
                 logging.info("\nShutting down RIJIN engine...")
@@ -631,6 +786,19 @@ class RijinLiveEngine:
                 logging.error(error_msg)
                 self._send_error_telegram(error_msg)
                 self._stop_event.wait(60)
+        
+        # End of day summary
+        if self.daily_trades > 0:
+            send_telegram_message(
+                f"📊 <b>RIJIN END OF DAY</b>\n\n"
+                f"📅 {self.today}\n"
+                f"🔢 Trades: {self.daily_trades}\n"
+                f"💰 P&L: <b>{self.daily_pnl_r:+.2f}R</b>\n\n"
+                f"🤖 AI Stats:\n"
+                f"• Accepted: {self.ai_accepts}\n"
+                f"• Restricted: {self.ai_restricts}\n"
+                f"• Failures: {self.ai_failures}"
+            )
         
         logging.info("RIJIN engine stopped.")
         send_telegram_message("🛑 <b>RIJIN STOPPED</b>\n\nEngine shut down.")

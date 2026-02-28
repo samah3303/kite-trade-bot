@@ -3,11 +3,7 @@ numpy
 kiteconnect
 python-dotenv
 requests
-selenium
-webdriver-manager
 pyotp
 pandas
 gunicorn
-google-generativeai
-yfinance
 pytz

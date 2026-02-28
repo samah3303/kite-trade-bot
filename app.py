@@ -119,59 +119,18 @@ def logs():
     content = log_capture_string.getvalue()
     return jsonify({"logs": content[-5000:]})
 
-# ===== RIJIN-SPECIFIC ENDPOINTS =====
-@app.route('/rijin/day-type')
-def rijin_day_type():
-    """Get current day type (RIJIN only)"""
-    if not USE_RIJIN:
-        return jsonify({"error": "RIJIN not enabled"}), 400
-    
-    return jsonify({
-        "day_type": active_bot.current_day_type.value if hasattr(active_bot, 'current_day_type') else "Unknown",
-        "last_check": active_bot.last_day_type_check.isoformat() if hasattr(active_bot, 'last_day_type_check') and active_bot.last_day_type_check else None,
-        "locked": active_bot.day_type_engine.day_locked if hasattr(active_bot, 'day_type_engine') else False,
-    })
-
+# ===== RIJIN AI-FILTERED ENDPOINTS =====
 @app.route('/rijin/stats')
 def rijin_stats():
-    """Get RIJIN system statistics"""
+    """Get RIJIN AI-filtered stats"""
     if not USE_RIJIN:
         return jsonify({"error": "RIJIN not enabled"}), 400
-    
-    stats = {
-        "system_stopped": active_bot.system_stop.stopped if hasattr(active_bot, 'system_stop') else False,
-        "stop_reason": active_bot.system_stop.stop_reason if hasattr(active_bot, 'system_stop') else None,
-        "consecutive_blocks": active_bot.system_stop.consecutive_blocks if hasattr(active_bot, 'system_stop') else 0,
-        "active_trades": len(active_bot.active_trades) if hasattr(active_bot, 'active_trades') else 0,
-        "opening_impulse_fired": active_bot.opening_impulse.total_impulse_count if hasattr(active_bot, 'opening_impulse') else 0,
-    }
-    
-    return jsonify(stats)
-
-@app.route('/rijin/config')
-def rijin_config():
-    """Get RIJIN configuration"""
-    if not USE_RIJIN:
-        return jsonify({"error": "RIJIN not enabled"}), 400
-    
-    from rijin_config import (
-        EXECUTION_GATES,
-        OPENING_IMPULSE_CONFIG,
-        CORRELATION_BRAKE_CONFIG,
-        SYSTEM_STOP_TRIGGERS,
-    )
-    
-    return jsonify({
-        "execution_gates": EXECUTION_GATES,
-        "opening_impulse": {
-            "time_start": str(OPENING_IMPULSE_CONFIG['time_start']),
-            "time_end": str(OPENING_IMPULSE_CONFIG['time_end']),
-            "min_move_atr": OPENING_IMPULSE_CONFIG['min_move_atr_multiple'],
-            "max_trades": OPENING_IMPULSE_CONFIG['max_trades_per_index'],
-        },
-        "correlation_brake": CORRELATION_BRAKE_CONFIG,
-        "system_stop": SYSTEM_STOP_TRIGGERS,
-    })
+    try:
+        import rijin_live_runner
+        stats = rijin_live_runner.get_live_stats()
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ===== RIJIN v3.0.1 SPECIFIC ENDPOINTS =====
 @app.route('/rijin/v3/live-stats')
@@ -216,7 +175,7 @@ if __name__ == "__main__":
     print(f"Starting Flask Dashboard")
     print(f"Mode: {bot_mode}")
     if USE_RIJIN:
-        print(f"RIJIN SYSTEM v3.0.1 - Impulse-Based Timing")
+        print(f"RIJIN v3.0.1 — AI-Filtered Architecture")
     print(f"{'='*60}\n")
     
     app.run(host='0.0.0.0', port=5000)

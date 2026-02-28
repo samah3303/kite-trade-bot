@@ -1,6 +1,6 @@
 """
 RIJIN v3.0.1 Live Runner - Dashboard Integration Wrapper
-Provides thread-based interface for Flask dashboard
+AI-Filtered Architecture: Signal Engine → AI Validator → Telegram Alert
 """
 
 import threading
@@ -15,29 +15,28 @@ _running = False
 _stop_event = threading.Event()
 
 # Expose stats for dashboard
-current_day_type = None
-last_day_type_check = None
-system_stopped = False
 active_trades = {}
 daily_pnl_r = 0.0
 daily_trades = 0
-consecutive_losses = 0
-pause_until = None
+
+# AI Stats
+ai_total_calls = 0
+ai_accepts = 0
+ai_restricts = 0
 
 def update_dashboard_stats():
     """Update global stats from engine for dashboard"""
-    global current_day_type, system_stopped, active_trades
-    global daily_pnl_r, daily_trades, consecutive_losses, pause_until
+    global active_trades, daily_pnl_r, daily_trades
+    global ai_total_calls, ai_accepts, ai_restricts
     
     if _engine:
         try:
-            current_day_type = _engine.day_type_engine.current_day_type
-            system_stopped = _engine.system_stop.stopped
             active_trades = {'active': _engine.active_trade} if _engine.active_trade else {}
             daily_pnl_r = _engine.daily_pnl_r
             daily_trades = _engine.daily_trades
-            consecutive_losses = _engine.consecutive_losses
-            pause_until = _engine.pause_until
+            ai_total_calls = _engine.ai_total_calls
+            ai_accepts = _engine.ai_accepts
+            ai_restricts = _engine.ai_restricts
         except Exception as e:
             logging.error(f"Error updating dashboard stats: {e}")
 
@@ -51,7 +50,6 @@ def _run_engine():
     except Exception as e:
         error_msg = f"Engine crashed: {e}"
         logging.error(error_msg)
-        # Send crash notification to Telegram
         try:
             send_telegram_message(
                 f"🚨 <b>RIJIN ENGINE CRASHED</b>\n\n"
@@ -76,18 +74,16 @@ def start():
     thread = threading.Thread(target=_run_engine, daemon=True)
     thread.start()
     
-    # Give it a moment to initialize
     import time
     time.sleep(2)
     
-    logging.info("RIJIN v3.0.1 Live Engine started via dashboard")
+    logging.info("RIJIN v3.0.1 AI-Filtered Live Engine started via dashboard")
     return True
 
 def stop():
     """Stop the RIJIN v3.0.1 engine gracefully"""
     global _running, _engine
     
-    # Signal the engine to stop via the event
     _stop_event.set()
     
     if _engine:
@@ -96,23 +92,6 @@ def stop():
     _running = False
     logging.info("RIJIN v3.0.1 Live Engine stop signal sent")
 
-# Compatibility attributes for dashboard
-class DummyObject:
-    def __init__(self):
-        pass
-
-# Create dummy objects to match old interface
-day_type_engine = DummyObject()
-day_type_engine.day_locked = False
-
-system_stop = DummyObject()
-system_stop.stopped = False
-system_stop.stop_reason = None
-system_stop.consecutive_blocks = 0
-
-opening_impulse = DummyObject()
-opening_impulse.total_impulse_count = 0
-
 # Update stats periodically
 def get_live_stats():
     """Get current live stats for dashboard"""
@@ -120,12 +99,16 @@ def get_live_stats():
     
     return {
         'running': _running,
-        'day_type': str(current_day_type.value) if current_day_type else "Unknown",
-        'system_stopped': system_stopped,
+        'day_type': "AI-Filtered",
+        'phase': "Active" if _running else "Offline",
         'active_trades': len(active_trades),
+        'active_trade': active_trades.get('active'),
         'daily_pnl_r': round(daily_pnl_r, 2),
         'daily_trades': daily_trades,
-        'consecutive_losses': consecutive_losses,
-        'paused': pause_until is not None,
-        'pause_until': pause_until.strftime('%H:%M') if pause_until else None,
+        'consecutive_losses': 0,
+        'paused': False,
+        'pause_until': None,
+        'ai_total_calls': ai_total_calls,
+        'ai_accepts': ai_accepts,
+        'ai_restricts': ai_restricts,
     }
