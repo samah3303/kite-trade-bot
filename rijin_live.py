@@ -729,9 +729,46 @@ class RijinLiveEngine:
                     self._stop_event.wait(30)
                     continue
                 
+                # === LIVE CONSOLE OUTPUT ===
+                price = float(candles[-1]['close'])
+                candle_time = candles[-1]['date']
+                is_new_candle = (self.last_check_time is None or 
+                                 candle_time != getattr(self, '_last_candle_time', None))
+                
+                if is_new_candle:
+                    self._last_candle_time = candle_time
+                    # Determine trend direction
+                    slope = indicators['slope']
+                    trend = '🟢 BULL' if slope > 5 else '🔴 BEAR' if slope < -5 else '⚪ FLAT'
+                    
+                    candle_t = candle_time.strftime('%H:%M') if hasattr(candle_time, 'strftime') else str(candle_time)
+                    logging.info(
+                        f"📊 [{candle_t}] {NIFTY_INSTRUMENT} | "
+                        f"Price: {price:.1f} | RSI: {indicators['rsi']:.1f} | "
+                        f"ATR: {indicators['atr']:.1f} | {trend} | "
+                        f"Candles: {len(candles)} | "
+                        f"Trades: {self.daily_trades} | PnL: {self.daily_pnl_r:+.2f}R"
+                    )
+                
                 # Check active trade exit
                 if self.active_trade:
                     current_price = float(candles[-1]['close'])
+                    trade = self.active_trade
+                    direction_label = 'LONG' if trade['direction'] == 'BUY' else 'SHORT'
+                    risk = abs(trade['entry'] - trade['sl'])
+                    if trade['direction'] == 'BUY':
+                        unrealized_r = (current_price - trade['entry']) / risk if risk > 0 else 0
+                    else:
+                        unrealized_r = (trade['entry'] - current_price) / risk if risk > 0 else 0
+                    
+                    if is_new_candle:
+                        logging.info(
+                            f"👁️ WATCHING {direction_label} | "
+                            f"Entry: {trade['entry']:.1f} → Now: {current_price:.1f} | "
+                            f"SL: {trade['sl']:.1f} | TGT: {trade['target']:.1f} | "
+                            f"P&L: {unrealized_r:+.2f}R"
+                        )
+                    
                     self.check_active_trade_exit(current_price)
                     self._stop_event.wait(10)
                     continue
@@ -742,6 +779,14 @@ class RijinLiveEngine:
                     signal = self.generate_signal(candles, indicators)
                     
                     if signal:
+                        direction_label = "SHORT" if signal['direction'] == 'SELL' else "LONG"
+                        logging.info(
+                            f"🔔 SIGNAL DETECTED: {direction_label} | "
+                            f"Gear: {signal.get('gear', 'N/A')} | "
+                            f"Entry: {signal['entry']:.1f} | SL: {signal['sl']:.1f} | "
+                            f"TGT: {signal['target']:.1f} → Sending to AI..."
+                        )
+                        
                         # Build market context
                         market_context = self.build_market_context(candles, indicators)
                         
@@ -754,7 +799,6 @@ class RijinLiveEngine:
                             self.execute_trade(signal, ai_result)
                         else:
                             # AI RESTRICTED — send alert
-                            direction_label = "SHORT" if signal['direction'] == 'SELL' else "LONG"
                             logging.info(
                                 f"⚠️ AI RESTRICTED: {direction_label} | "
                                 f"Confidence: {ai_result['confidence']}% | "
@@ -770,6 +814,9 @@ class RijinLiveEngine:
                                 f"🤖 <b>AI: RESTRICT</b> ({ai_result['confidence']}%)\n"
                                 f"{reasons_text}"
                             )
+                    else:
+                        if is_new_candle:
+                            logging.info(f"🔍 Scan complete — no signal")
                     
                     self.last_check_time = now
                 

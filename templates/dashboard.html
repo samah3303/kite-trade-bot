@@ -545,32 +545,83 @@
         <div class="trade-details" id="trade-details"></div>
       </div>
 
-      <!-- Backtest Comparison -->
-      <div class="backtest-panel">
-        <div class="backtest-col">
-          <h3>📊 Backtest Results (67 days)</h3>
-          <p>Win Rate <span id="bt-winrate">56.72%</span></p>
-          <p>Total P&L <span id="bt-total">+17.98R</span></p>
-          <p>Avg Win <span id="bt-avgwin">+1.24R</span></p>
-          <p>Worst Day <span id="bt-worst">-2.00R</span></p>
+
+
+      <!-- MODE_DON Section -->
+      <div style="margin-bottom: 30px; animation: fadeInUp 0.6s ease-out 0.55s both;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+          <div>
+            <h2 style="font-size: 1.3rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">
+              MODE_DON — Breakout Engine
+            </h2>
+            <p style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;">
+              Regime-Gated Donchian • No AI • Deterministic
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-success" onclick="startModeDon()" style="padding: 10px 20px; font-size: 12px;">
+              ▶ Start DON
+            </button>
+            <button class="btn btn-danger" onclick="stopModeDon()" style="padding: 10px 20px; font-size: 12px;">
+              ■ Stop DON
+            </button>
+          </div>
         </div>
-        <div class="backtest-col">
-          <h3>📈 Today vs Expected</h3>
-          <p>
-            Trades
-            <span
-              ><span id="today-trades">0</span> /
-              <span id="exp-trades">1.4</span></span
-            >
-          </p>
-          <p>
-            P&L
-            <span
-              ><span id="today-pnl">+0.00R</span> /
-              <span id="exp-pnl">+0.27R</span></span
-            >
-          </p>
-          <p>Win Rate <span id="today-winrate">-%</span></p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+          <!-- Nifty -->
+          <div class="stat-card" id="don-nifty-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div class="stat-label" style="margin: 0;">🟦 NIFTY 50</div>
+              <span id="don-nifty-status" style="font-size: 0.7rem; padding: 4px 10px; border-radius: 20px; background: var(--bg-primary); color: var(--text-muted);">Offline</span>
+            </div>
+            <div class="stat-value" id="don-nifty-regime" style="font-size: 1.3rem;">Awaiting 12 PM</div>
+            <div class="stat-sub" style="margin-top: 8px;">
+              Score: <span id="don-nifty-score">-</span>/8 •
+              P&L: <span id="don-nifty-pnl">+0.00R</span> •
+              Trades: <span id="don-nifty-trades">0</span>
+            </div>
+            <div id="don-nifty-trade" style="display: none; margin-top: 8px; font-size: 0.8rem; color: var(--success);"></div>
+          </div>
+
+          <!-- Sensex -->
+          <div class="stat-card" id="don-sensex-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div class="stat-label" style="margin: 0;">🟩 SENSEX</div>
+              <span id="don-sensex-status" style="font-size: 0.7rem; padding: 4px 10px; border-radius: 20px; background: var(--bg-primary); color: var(--text-muted);">Offline</span>
+            </div>
+            <div class="stat-value" id="don-sensex-regime" style="font-size: 1.3rem;">Awaiting 12 PM</div>
+            <div class="stat-sub" style="margin-top: 8px;">
+              Score: <span id="don-sensex-score">-</span>/8 •
+              P&L: <span id="don-sensex-pnl">+0.00R</span> •
+              Trades: <span id="don-sensex-trades">0</span>
+            </div>
+            <div id="don-sensex-trade" style="display: none; margin-top: 8px; font-size: 0.8rem; color: var(--success);"></div>
+          </div>
+
+          <!-- Bank Nifty -->
+          <div class="stat-card" id="don-banknifty-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div class="stat-label" style="margin: 0;">🟥 BANK NIFTY</div>
+              <span id="don-banknifty-status" style="font-size: 0.7rem; padding: 4px 10px; border-radius: 20px; background: var(--bg-primary); color: var(--text-muted);">Offline</span>
+            </div>
+            <div class="stat-value" id="don-banknifty-regime" style="font-size: 1.3rem;">Awaiting 12 PM</div>
+            <div class="stat-sub" style="margin-top: 8px;">
+              Score: <span id="don-banknifty-score">-</span>/8 •
+              P&L: <span id="don-banknifty-pnl">+0.00R</span> •
+              Trades: <span id="don-banknifty-trades">0</span>
+            </div>
+            <div id="don-banknifty-trade" style="display: none; margin-top: 8px; font-size: 0.8rem; color: var(--success);"></div>
+          </div>
+        </div>
+
+        <!-- DON System Summary -->
+        <div style="margin-top: 12px; padding: 12px 20px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+          <span style="color: var(--text-secondary);">
+            System P&L: <strong id="don-system-pnl" style="color: var(--text-primary);">+0.00R</strong> •
+            Active: <strong id="don-active-count" style="color: var(--text-primary);">0</strong>/3
+          </span>
+          <span id="don-system-status" style="color: var(--text-muted);">Offline</span>
         </div>
       </div>
 
@@ -578,7 +629,7 @@
       <div class="console-panel">
         <div class="console-header">📜 Console Output</div>
         <div class="log-container" id="log-container">
-          Initializing RIJIN v3.0.1 Console...
+          Initializing Console...
         </div>
       </div>
     </div>
@@ -740,17 +791,105 @@
         setTimeout(updateStatus, 500);
       }
 
+      // MODE_DON Controls
+      async function startModeDon() {
+        await fetch("/mode-don/start", { method: "POST" });
+      }
+
+      async function stopModeDon() {
+        await fetch("/mode-don/stop", { method: "POST" });
+      }
+
+      // MODE_DON Stats
+      async function updateModeDonStats() {
+        try {
+          const res = await fetch("/mode-don/stats");
+          const data = await res.json();
+
+          // System-level
+          const sysPnl = data.system_pnl_r || 0;
+          const sysPnlEl = document.getElementById("don-system-pnl");
+          sysPnlEl.textContent = `${sysPnl > 0 ? "+" : ""}${sysPnl.toFixed(2)}R`;
+          sysPnlEl.style.color = sysPnl >= 0 ? "var(--success)" : "var(--danger)";
+
+          document.getElementById("don-active-count").textContent = data.active_trades || 0;
+
+          const sysStatus = document.getElementById("don-system-status");
+          if (data.system_stopped) {
+            sysStatus.textContent = "🛑 System Stopped";
+            sysStatus.style.color = "var(--danger)";
+          } else if (data.running) {
+            sysStatus.textContent = data.regime_computed ? "🟢 Active" : "⏳ Waiting for 12 PM";
+            sysStatus.style.color = data.regime_computed ? "var(--success)" : "var(--warning)";
+          } else {
+            sysStatus.textContent = "Offline";
+            sysStatus.style.color = "var(--text-muted)";
+          }
+
+          // Per-instrument
+          const instMap = { NIFTY: "nifty", SENSEX: "sensex", BANKNIFTY: "banknifty" };
+          for (const [key, id] of Object.entries(instMap)) {
+            const inst = data.instruments?.[key];
+            if (!inst) continue;
+
+            document.getElementById(`don-${id}-regime`).textContent = inst.regime || "Unknown";
+            document.getElementById(`don-${id}-score`).textContent = inst.regime_score ?? "-";
+
+            const pnlEl = document.getElementById(`don-${id}-pnl`);
+            const pnl = inst.daily_pnl_r || 0;
+            pnlEl.textContent = `${pnl > 0 ? "+" : ""}${pnl.toFixed(2)}R`;
+            pnlEl.style.color = pnl >= 0 ? "var(--success)" : "var(--danger)";
+
+            document.getElementById(`don-${id}-trades`).textContent = inst.daily_trades || 0;
+
+            // Status badge
+            const statusEl = document.getElementById(`don-${id}-status`);
+            if (inst.disabled) {
+              statusEl.textContent = "Disabled";
+              statusEl.style.color = "var(--danger)";
+              statusEl.style.background = "rgba(239,68,68,0.15)";
+            } else if (inst.active_trade) {
+              statusEl.textContent = `${inst.active_trade.direction} Active`;
+              statusEl.style.color = "var(--success)";
+              statusEl.style.background = "rgba(16,185,129,0.15)";
+            } else if (data.running) {
+              statusEl.textContent = "Scanning";
+              statusEl.style.color = "var(--accent)";
+              statusEl.style.background = "rgba(59,130,246,0.15)";
+            } else {
+              statusEl.textContent = "Offline";
+              statusEl.style.color = "var(--text-muted)";
+              statusEl.style.background = "var(--bg-primary)";
+            }
+
+            // Active trade details
+            const tradeEl = document.getElementById(`don-${id}-trade`);
+            if (inst.active_trade) {
+              tradeEl.textContent = `⚡ ${inst.active_trade.direction} @ ${inst.active_trade.entry} | Stop: ${inst.active_trade.stop}`;
+              tradeEl.style.display = "block";
+              tradeEl.style.color = inst.active_trade.direction === "LONG" ? "var(--success)" : "var(--danger)";
+            } else {
+              tradeEl.style.display = "none";
+            }
+          }
+        } catch (e) {
+          // Silently fail if endpoint not available
+        }
+      }
+
       // Initialize
       updateStatus();
       updateRijinStats();
       loadBacktestResults();
       fetchLogs();
+      updateModeDonStats();
 
       // Auto-update every 2 seconds
       setInterval(() => {
         updateStatus();
         updateRijinStats();
         fetchLogs();
+        updateModeDonStats();
       }, 2000);
     </script>
   </body>

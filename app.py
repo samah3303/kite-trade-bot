@@ -18,6 +18,7 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "fallback_dev_secret_key")
 API_KEY = os.getenv("KITE_API_KEY")
 API_SECRET = os.getenv("KITE_API_SECRET")
 USE_RIJIN = os.getenv("USE_RIJIN_SYSTEM", "false").lower() == "true"
+MODE_DON_ENABLED = os.getenv("MODE_DON_ENABLED", "true").lower() == "true"
 
 # Kite for login flow
 kite = KiteConnect(api_key=API_KEY)
@@ -50,6 +51,17 @@ class LogCatcher(object):
         sys.__stdout__.flush()
 
 sys.stdout = LogCatcher()
+
+# Capture logging.* output (RIJIN engine uses logging, not print)
+import logging as _logging
+_log_handler = _logging.StreamHandler(log_capture_string)
+_log_handler.setLevel(_logging.DEBUG)
+_log_handler.setFormatter(_logging.Formatter('%(asctime)s - %(message)s'))
+_logging.root.addHandler(_log_handler)
+
+# Suppress Flask/Werkzeug request logs from dashboard console
+_logging.getLogger('werkzeug').propagate = False
+_logging.getLogger('werkzeug').handlers = [_logging.StreamHandler(sys.__stdout__)]
 
 @app.route('/')
 def home():
@@ -146,23 +158,6 @@ def rijin_v3_live_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/rijin/v3/backtest-results')
-def rijin_v3_backtest():
-    """Get RIJIN v3.0.1 backtest results summary"""
-    return jsonify({
-        "period": "67 days (Nov 20, 2025 - Feb 14, 2026)",
-        "total_trades": 67,
-        "win_rate": 56.72,
-        "total_pnl_r": 17.98,
-        "avg_win_r": 1.24,
-        "avg_loss_r": -1.00,
-        "worst_day_r": -2.00,
-        "best_day_r": 5.96,
-        "bad_days": 9,
-        "consecutive_loss_pauses": 15,
-        "status": "PRODUCTION READY"
-    })
-
 # Mode F Integration
 from mode_f_engine import ModeFEngine
 try:
@@ -170,12 +165,44 @@ try:
 except ImportError:
     GlobalMarketAnalyzer = None
 
+# ===== MODE_DON ENDPOINTS =====
+if MODE_DON_ENABLED:
+    try:
+        import mode_don_runner
+        print("[MODE_DON] Loaded MODE_DON Engine")
+    except ImportError:
+        print("[WARN] mode_don_runner not found. MODE_DON disabled.")
+        MODE_DON_ENABLED = False
+
+@app.route('/mode-don/start', methods=['POST'])
+def start_mode_don():
+    if not MODE_DON_ENABLED:
+        return jsonify({"status": "error", "message": "MODE_DON not enabled"}), 400
+    if mode_don_runner.start():
+        return jsonify({"status": "started", "message": "MODE_DON engine started."})
+    return jsonify({"status": "error", "message": "MODE_DON already running."})
+
+@app.route('/mode-don/stop', methods=['POST'])
+def stop_mode_don():
+    if not MODE_DON_ENABLED:
+        return jsonify({"status": "error", "message": "MODE_DON not enabled"}), 400
+    mode_don_runner.stop()
+    return jsonify({"status": "stopped", "message": "MODE_DON stop signal sent."})
+
+@app.route('/mode-don/stats')
+def mode_don_stats():
+    if not MODE_DON_ENABLED:
+        return jsonify({"running": False, "instruments": {}})
+    return jsonify(mode_don_runner.get_live_stats())
+
 if __name__ == "__main__":
     print(f"\n{'='*60}")
     print(f"Starting Flask Dashboard")
     print(f"Mode: {bot_mode}")
     if USE_RIJIN:
         print(f"RIJIN v3.0.1 — AI-Filtered Architecture")
+    if MODE_DON_ENABLED:
+        print(f"MODE_DON — Regime-Gated Breakout Engine")
     print(f"{'='*60}\n")
     
     app.run(host='0.0.0.0', port=5000)
