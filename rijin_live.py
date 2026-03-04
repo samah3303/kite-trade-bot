@@ -80,9 +80,9 @@ class RijinLiveEngine:
         # Stop event for graceful shutdown
         self._stop_event = stop_event or threading.Event()
         
-        # Kite Connection
+        # Kite Connection — read token fresh from env (callback may have updated it)
         self.kite = KiteConnect(api_key=API_KEY)
-        self.kite.set_access_token(ACCESS_TOKEN)
+        self.kite.set_access_token(os.getenv("KITE_ACCESS_TOKEN", ACCESS_TOKEN))
         
         # Resolve instrument token ONCE at startup
         self.instrument_token = None
@@ -683,11 +683,8 @@ class RijinLiveEngine:
         
         # Startup health check
         if not self.instrument_token:
-            send_telegram_message(
-                "🚨 <b>RIJIN v3.0.1 FAILED TO START</b>\n\n"
-                f"Instrument token could not be resolved for: <code>{NIFTY_INSTRUMENT}</code>\n"
-                f"Check .env KITE_ACCESS_TOKEN and NIFTY_INSTRUMENT"
-            )
+            logging.error("RIJIN cannot start — instrument token not resolved. Waiting for token refresh.")
+            # Token alert already sent by _resolve_instrument_token via token_manager
             return
         
         send_telegram_message(
