@@ -38,6 +38,9 @@ from unified_engine import (
     send_telegram_message,
 )
 
+# Token Health
+import token_manager
+
 # Setup
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -127,13 +130,18 @@ class RijinLiveEngine:
         except Exception as e:
             error_msg = f"❌ Failed to resolve instrument '{NIFTY_INSTRUMENT}': {e}"
             logging.error(error_msg)
-            send_telegram_message(
-                f"🚨 <b>RIJIN STARTUP ERROR</b>\n\n"
-                f"Could not resolve instrument: <code>{NIFTY_INSTRUMENT}</code>\n"
-                f"Error: {e}\n\n"
-                f"⚠️ The engine will NOT generate signals until this is fixed.\n"
-                f"Check NIFTY_INSTRUMENT in .env"
-            )
+
+            # Check if this is a token/auth error
+            if token_manager.handle_api_error(e, context="RIJIN startup"):
+                logging.error("🔑 RIJIN cannot start — Kite token expired. Check Telegram for login link.")
+            else:
+                send_telegram_message(
+                    f"🚨 <b>RIJIN STARTUP ERROR</b>\n\n"
+                    f"Could not resolve instrument: <code>{NIFTY_INSTRUMENT}</code>\n"
+                    f"Error: {e}\n\n"
+                    f"⚠️ The engine will NOT generate signals until this is fixed.\n"
+                    f"Check NIFTY_INSTRUMENT in .env"
+                )
             self.instrument_token = None
     
     def _send_error_telegram(self, error_msg):
@@ -203,9 +211,13 @@ class RijinLiveEngine:
             
             return data
         except Exception as e:
-            error_msg = f"Candle fetch failed: {e}"
-            logging.error(error_msg)
-            self._send_error_telegram(error_msg)
+            # Check if token expired mid-session
+            if token_manager.handle_api_error(e, context="RIJIN fetch_candles"):
+                self.instrument_token = None  # Force re-resolve on next call
+            else:
+                error_msg = f"Candle fetch failed: {e}"
+                logging.error(error_msg)
+                self._send_error_telegram(error_msg)
             return []
     
     # ---------------------------------------------------------------

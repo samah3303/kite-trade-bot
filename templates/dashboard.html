@@ -512,6 +512,19 @@
         </button>
       </div>
 
+      <!-- Token Status Banner (hidden when healthy) -->
+      <div id="token-banner" style="display: none; margin-bottom: 20px; padding: 14px 20px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); border-radius: 12px; animation: fadeInUp 0.3s ease-out;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="color: #ef4444; font-weight: 600;">
+            🔑 Kite Token Expired — Engines paused
+          </span>
+          <a href="/login" class="btn btn-success" style="padding: 8px 16px; font-size: 12px; text-decoration: none;">
+            Login to Zerodha →
+          </a>
+        </div>
+        <div id="token-error" style="margin-top: 6px; font-size: 0.75rem; color: var(--text-muted);"></div>
+      </div>
+
       <!-- Stats Grid -->
       <div class="stats-grid">
         <div class="stat-card">
@@ -746,25 +759,6 @@
         }
       }
 
-      // Load Backtest Results
-      async function loadBacktestResults() {
-        try {
-          const res = await fetch("/rijin/v3/backtest-results");
-          const data = await res.json();
-
-          document.getElementById("bt-winrate").textContent =
-            `${data.win_rate}%`;
-          document.getElementById("bt-total").textContent =
-            `+${data.total_pnl_r}R`;
-          document.getElementById("bt-avgwin").textContent =
-            `+${data.avg_win_r}R`;
-          document.getElementById("bt-worst").textContent =
-            `${data.worst_day_r}R`;
-        } catch (e) {
-          console.error("Backtest load error:", e);
-        }
-      }
-
       // Update Logs
       async function fetchLogs() {
         try {
@@ -877,12 +871,31 @@
         }
       }
 
+      // Token Status Check
+      async function checkTokenStatus() {
+        try {
+          const res = await fetch("/auth-status");
+          const data = await res.json();
+          const banner = document.getElementById("token-banner");
+          const errorEl = document.getElementById("token-error");
+
+          if (data.valid === false) {
+            banner.style.display = "block";
+            errorEl.textContent = data.last_error || "";
+          } else {
+            banner.style.display = "none";
+          }
+        } catch (e) {
+          // Silently fail
+        }
+      }
+
       // Initialize
       updateStatus();
       updateRijinStats();
-      loadBacktestResults();
       fetchLogs();
       updateModeDonStats();
+      checkTokenStatus();
 
       // Auto-update every 2 seconds
       setInterval(() => {
@@ -891,6 +904,9 @@
         fetchLogs();
         updateModeDonStats();
       }, 2000);
+
+      // Token check every 30 seconds (not every 2s — it calls kite.profile)
+      setInterval(checkTokenStatus, 30000);
     </script>
   </body>
 </html>

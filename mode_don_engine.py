@@ -23,6 +23,9 @@ from kiteconnect import KiteConnect
 # Shared utilities
 from unified_engine import simple_ema, calculate_atr, send_telegram_message
 
+# Token health
+import token_manager
+
 # Config
 from mode_don_config import (
     DayRegime, TradeDirection,
@@ -669,12 +672,15 @@ class ModeDonEngine:
                 else:
                     logging.warning(f"⚠️ MODE_DON [{name}] → {sym} not found in quotes")
         except Exception as e:
-            logging.error(f"MODE_DON token resolution failed: {e}")
-            send_telegram_message(
-                f"🚨 <b>MODE_DON STARTUP ERROR</b>\n\n"
-                f"Failed to resolve instrument tokens: {e}\n"
-                f"Engine will retry on next cycle."
-            )
+            if token_manager.handle_api_error(e, context="MODE_DON startup"):
+                logging.error("🔑 MODE_DON cannot start — Kite token expired. Check Telegram for login link.")
+            else:
+                logging.error(f"MODE_DON token resolution failed: {e}")
+                send_telegram_message(
+                    f"🚨 <b>MODE_DON STARTUP ERROR</b>\n\n"
+                    f"Failed to resolve instrument tokens: {e}\n"
+                    f"Engine will retry on next cycle."
+                )
 
     def reset_daily_state(self):
         """Reset all state for new day."""
@@ -721,7 +727,8 @@ class ModeDonEngine:
             )
             return data if data else []
         except Exception as e:
-            logging.error(f"MODE_DON fetch error (token {instrument_token}): {e}")
+            if not token_manager.handle_api_error(e, context="MODE_DON fetch_candles"):
+                logging.error(f"MODE_DON fetch error (token {instrument_token}): {e}")
             return []
 
     # ---------------------------------------------------------------

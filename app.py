@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv, set_key
 from kiteconnect import KiteConnect
 import unified_engine as bot
+import token_manager
 
 load_dotenv()
 
@@ -88,9 +89,32 @@ def callback():
         set_key(".env", "KITE_ACCESS_TOKEN", access_token)
         os.environ["KITE_ACCESS_TOKEN"] = access_token
         
-        # Update Bot's Token Global
+        # Update ALL engine tokens
         if not USE_RIJIN:
             bot.ACCESS_TOKEN = access_token
+        
+        # Update RIJIN engine if running
+        try:
+            if hasattr(active_bot, 'engine') and active_bot.engine:
+                active_bot.engine.kite.set_access_token(access_token)
+                active_bot.engine._resolve_instrument_token()
+                print("🔑 RIJIN token refreshed via login")
+        except Exception:
+            pass
+        
+        # Update MODE_DON engine if running
+        try:
+            if MODE_DON_ENABLED:
+                import mode_don_runner
+                if mode_don_runner._engine:
+                    mode_don_runner._engine.kite.set_access_token(access_token)
+                    mode_don_runner._engine._resolve_tokens()
+                    print("🔑 MODE_DON token refreshed via login")
+        except Exception:
+            pass
+        
+        # Reset token alert state
+        token_manager.reset_daily_alert()
         
         return redirect(url_for('home'))
         
@@ -123,8 +147,17 @@ def status():
     
     return jsonify({
         "running": bool(is_running),
-        "mode": bot_mode
+        "mode": bot_mode,
+        "token": token_manager.get_token_status(),
     })
+
+@app.route('/auth-status')
+def auth_status():
+    """Check Kite token health — used by dashboard and monitoring."""
+    token_ok = token_manager.check_token_health(kite)
+    status = token_manager.get_token_status()
+    status["login_url"] = f"/login"
+    return jsonify(status)
 
 @app.route('/logs')
 def logs():
