@@ -21,7 +21,15 @@ services:
         sync: false
       - key: NIFTY_INSTRUMENT
         value: "NSE:NIFTY 50"
+      - key: SENSEX_INSTRUMENT
+        value: "BSE:SENSEX"
+      - key: BANKNIFTY_INSTRUMENT
+        value: "NSE:NIFTY BANK"
       - key: USE_RIJIN_SYSTEM
         value: "true"
+      - key: MODE_DON_ENABLED
+        value: "true"
+      - key: RENDER_EXTERNAL_URL
+        sync: false
       - key: PYTHON_VERSION
         value: "3.13.0"
