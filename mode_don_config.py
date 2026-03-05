@@ -96,8 +96,29 @@ DEGRADATION_RULES = {
 
 EARLY_REGIME_GATE = {
     "expansion_min": 1.5,           # Current Range ≥ 1.5 × Opening 30-min Range
-    "vwap_hold_candles": 5,         # Price must hold one side of VWAP for 5 consecutive candles
+    "vwap_hold_candles": 3,         # v2.1: Reduced from 5 to 3 for faster activation
     "atr_gate_multiplier": 1.1,     # ATR ≥ 1.1 × ATR at 9:45
+}
+
+
+# ===================================================================
+# EARLY SESSION DONCHIAN (Before 11:00 AM)
+# ===================================================================
+
+EARLY_SESSION_DONCHIAN = {
+    "period": 12,                    # 12-period lookback for early breakouts
+    "cutoff_time": dtime(11, 0),     # Switch to standard after 11:00
+    "earliest_breakout": dtime(10, 15),  # 12 * 5min from 9:15 = ~10:15
+}
+
+
+# ===================================================================
+# CORRELATION PROTECTION
+# ===================================================================
+
+CORRELATION_PROTECTION = {
+    "blocked_pairs": [("NIFTY", "SENSEX")],   # Block same-direction trades
+    "allowed_pairs": [("NIFTY", "BANKNIFTY")], # Financial sector divergence OK
 }
 
 
@@ -115,20 +136,23 @@ INSTRUMENTS = {
         "donchian_entry_period": 20,     # 20-period for entry breakout
         "donchian_stop_period": 10,      # 10-period for trailing stop
 
-        # Lookback formation: 20 × 5min = 100min from 9:15 → earliest ≈ 10:55
-        "earliest_breakout_time": dtime(10, 55),
+        # v2.1: Early session uses 12-period, after 11:00 uses standard
+        "earliest_breakout_time": dtime(10, 15),  # Updated for early Donchian
 
         # Gates
-        "atr_gate_multiplier": 1.2,      # ATR must be ≥ 1.2× morning ATR
-        "exhaustion_multiplier": 2.5,    # Block if move ≥ 2.5× avg leg
+        "atr_gate_multiplier": 1.2,
+        "exhaustion_multiplier": 2.5,
+
+        # v2.1: Breakout buffer
+        "breakout_buffer_pct": 0.02,     # 0.02% (~5 pts)
 
         # Risk
-        "risk_r": 1.0,                   # 1R per trade
-        "daily_loss_cap_r": -2.5,        # Stop this instrument at -2.5R
+        "risk_r": 1.0,
+        "daily_loss_cap_r": -2.5,
 
-        # Time windows: (start, end)
+        # v2.1: Trading hours start at 9:45
         "time_windows": [
-            (dtime(9, 30), dtime(12, 45)),
+            (dtime(9, 45), dtime(12, 45)),
             (dtime(13, 30), dtime(14, 45)),
         ],
     },
@@ -141,17 +165,18 @@ INSTRUMENTS = {
         "donchian_entry_period": 18,
         "donchian_stop_period": 10,
 
-        # Lookback formation: 18 × 5min = 90min from 9:15 → earliest ≈ 10:45
-        "earliest_breakout_time": dtime(10, 45),
+        "earliest_breakout_time": dtime(10, 15),
 
         "atr_gate_multiplier": 1.2,
         "exhaustion_multiplier": 2.3,
+
+        "breakout_buffer_pct": 0.02,     # 0.02% (~16 pts)
 
         "risk_r": 1.0,
         "daily_loss_cap_r": -2.5,
 
         "time_windows": [
-            (dtime(9, 30), dtime(12, 45)),
+            (dtime(9, 45), dtime(12, 45)),
             (dtime(13, 30), dtime(14, 45)),
         ],
     },
@@ -164,20 +189,20 @@ INSTRUMENTS = {
         "donchian_entry_period": 15,
         "donchian_stop_period": 10,
 
-        # Lookback formation: 15 × 5min = 75min from 9:15 → earliest ≈ 10:30
-        "earliest_breakout_time": dtime(10, 30),
+        "earliest_breakout_time": dtime(10, 15),
 
-        "atr_gate_multiplier": 1.3,      # Tighter gate for aggressive instrument
+        "atr_gate_multiplier": 1.3,
         "exhaustion_multiplier": 2.0,
 
-        "risk_r": 0.75,                   # Reduced risk
-        "daily_loss_cap_r": -2.0,         # Tighter daily cap
+        "breakout_buffer_pct": 0.03,     # 0.03% (~15 pts) — tighter for volatile instrument
+
+        "risk_r": 0.75,
+        "daily_loss_cap_r": -2.0,
 
         "time_windows": [
-            (dtime(9, 30), dtime(11, 45)),         # Morning only by default
-            (dtime(13, 45), dtime(14, 30)),         # Afternoon only if Clean Trend
+            (dtime(9, 45), dtime(11, 45)),
+            (dtime(13, 45), dtime(14, 30)),
         ],
-        # Special: afternoon window only allowed for Clean Trend
         "afternoon_requires_clean_trend": True,
     },
 }

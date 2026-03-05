@@ -307,25 +307,41 @@ class DonchianSignalEngine:
 
     def check_entry(self, candles, instrument_config):
         """
-        Entry: close above upper Donchian (LONG) or below lower (SHORT).
+        Entry: close above upper Donchian + buffer (LONG) or below lower - buffer (SHORT).
         CLOSE confirmation only. No wick triggers.
+        v2.1: Uses 12-period Donchian before 11:00, standard period after.
+        v2.1: Breakout must exceed Donchian by buffer to clear algo-hunting wicks.
         """
-        period = instrument_config['donchian_entry_period']
+        from mode_don_config import EARLY_SESSION_DONCHIAN
+        
+        now = now_ist().time()
+        
+        # v2.1: Early session uses shorter Donchian period
+        if now < EARLY_SESSION_DONCHIAN['cutoff_time']:
+            period = EARLY_SESSION_DONCHIAN['period']
+        else:
+            period = instrument_config['donchian_entry_period']
+        
         upper, lower = self.calculate_donchian(candles, period)
 
         if upper is None:
             return None
 
         current_close = float(candles[-1]['close'])
+        
+        # v2.1: Breakout buffer — must clear level by a micro-margin
+        buffer_pct = instrument_config.get('breakout_buffer_pct', 0.0)
+        buffer_up = current_close * buffer_pct / 100
+        buffer_dn = current_close * buffer_pct / 100
 
-        if current_close > upper:
+        if current_close > upper + buffer_up:
             return {
                 'direction': TradeDirection.LONG,
                 'entry': current_close,
                 'donchian_upper': upper,
                 'donchian_lower': lower,
             }
-        elif current_close < lower:
+        elif current_close < lower - buffer_dn:
             return {
                 'direction': TradeDirection.SHORT,
                 'entry': current_close,
@@ -918,6 +934,24 @@ class ModeDonEngine:
             if not signal:
                 continue
 
+            # v2.1: Correlation protection — block same-direction trades on correlated pairs
+            from mode_don_config import CORRELATION_PROTECTION
+            correlation_blocked = False
+            for pair in CORRELATION_PROTECTION.get('blocked_pairs', []):
+                if name in pair:
+                    other_name = pair[0] if pair[1] == name else pair[1]
+                    other_inst = self.instruments.get(other_name)
+                    if other_inst and other_inst.active_trade:
+                        if other_inst.active_trade['direction'] == signal['direction']:
+                            logging.info(
+                                f"🚫 MODE_DON [{name}] BLOCKED: Correlation with {other_name} "
+                                f"({signal['direction'].value})"
+                            )
+                            correlation_blocked = True
+                            break
+            if correlation_blocked:
+                continue
+
             # No same-direction double entry check
             if SYSTEM_RISK['no_same_direction_double']:
                 for other_name, other_inst in self.instruments.items():
@@ -1058,6 +1092,16 @@ class ModeDonEngine:
                 )
 
                 inst.active_trade = None
+
+                # v2.1: Trend re-entries — re-arm after profitable/breakeven close
+                if pnl_r >= 0 and not inst.disabled and inst.regime_score >= 5:
+                    logging.info(
+                        f"♻️ MODE_DON [{name}] RE-ARMED for new breakout "
+                        f"(Regime: {inst.regime_score}/8)"
+                    )
+                    # inst stays enabled — can take another trade
+                elif inst.disabled:
+                    logging.info(f"❌ MODE_DON [{name}] permanently disabled for today")
 
                 # System loss cap check
                 if self.system_pnl_r <= SYSTEM_RISK['system_daily_loss_cap_r']:

@@ -29,14 +29,21 @@ class DayType(Enum):
 # INSTRUMENT EXPIRY MEMORY (HARD-CODED FACTS)
 # ===================================================================
 EXPIRY_DAYS = {
-    "NIFTY": 1,      # Tuesday (0=Mon, 1=Tue, ...)
-    "SENSEX": 3,     # Thursday
+    "NIFTY": 3,       # Thursday (0=Mon, 1=Tue, ...)
+    "SENSEX": 3,      # Thursday
+    "BANKNIFTY": 2,   # Wednesday
 }
 
 # v2.4: Expiry Intelligence Layer
 EXPIRY_INTELLIGENCE_CONFIG = {
     "signal_reduction_pct": 0.30,      # Reduce allowed signals by 30%
     "no_entry_after": dtime(14, 45),   # No new entries after 2:45 PM
+}
+
+# v3.1: Expiry Protection Matrix
+EXPIRY_PROTECTION = {
+    "size_reduction_pct": 30,          # 30% size reduction after 12 PM on expiry
+    "gear2_block_after": dtime(13, 30),  # Block Gear 2 after 1:30 PM on expiry
 }
 
 

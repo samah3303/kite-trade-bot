@@ -162,25 +162,43 @@ class ModeFEngine:
             # Determine active logic based on Regime
             
             # ---------------------------------------------------------
-            # 🔵 GEAR 1: TREND (Low/Normal Vol)
+            # 🔵 GEAR 1: TREND (Low/Normal Vol) — Anti-Lag v3.1
+            # Uses 9-EMA + VWAP + Fractal instead of slow EMA20>EMA50
             # ---------------------------------------------------------
             if regime in [VolatilityRegime.LOW, VolatilityRegime.NORMAL]:
-                # Long Trend Check
-                if P > E20 and E20 > E50:
-                    if dominance == DominanceState.BUYERS:
-                        # Pullback Entry?
-                        if L <= (E20 * 1.0005): # Near EMA20
-                            if not is_risk_off:
-                                return ModeFResponse(True, "BUY", Gear.GEAR_1_TREND, "Trend Pullback", 
-                                                     entry=P, sl=min(L, E20-(atr)), target=P+(2*atr), regime=regime)
+                ema9 = self._ema(closes, 9)
+                E9 = ema9[-1]
                 
-                # Short Trend Check
-                if P < E20 and E20 < E50:
+                # VWAP calculation
+                cum_vol = 0
+                cum_pv = 0
+                for candle in candles:
+                    v = candle.get('volume', 1) or 1
+                    cum_vol += v
+                    cum_pv += candle['close'] * v
+                vwap = cum_pv / cum_vol if cum_vol > 0 else P
+                
+                # Fractal swing check (last 10 candles)
+                recent_highs = [x['high'] for x in candles[-10:]]
+                recent_lows = [x['low'] for x in candles[-10:]]
+                is_hh = recent_highs[-1] > max(recent_highs[-5:-1]) if len(recent_highs) >= 5 else False
+                is_ll = recent_lows[-1] < min(recent_lows[-5:-1]) if len(recent_lows) >= 5 else False
+                
+                # Long: Price > 9-EMA, Price > VWAP, Higher-High confirmed
+                if P > E9 and P > vwap and is_hh:
+                    if dominance == DominanceState.BUYERS:
+                        if L <= (E9 * 1.001):  # Near 9-EMA pullback
+                            if not is_risk_off:
+                                return ModeFResponse(True, "BUY", Gear.GEAR_1_TREND, "Anti-Lag Trend Pullback", 
+                                                     entry=P, sl=min(L, E9-(atr)), target=P+(2*atr), regime=regime)
+                
+                # Short: Price < 9-EMA, Price < VWAP, Lower-Low confirmed
+                if P < E9 and P < vwap and is_ll:
                     if dominance == DominanceState.SELLERS:
-                        if H >= (E20 * 0.9995):
+                        if H >= (E9 * 0.999):  # Near 9-EMA pullback
                             if not is_risk_on:
-                                return ModeFResponse(True, "SELL", Gear.GEAR_1_TREND, "Trend Pullback", 
-                                                     entry=P, sl=max(H, E20+(atr)), target=P-(2*atr), regime=regime)
+                                return ModeFResponse(True, "SELL", Gear.GEAR_1_TREND, "Anti-Lag Trend Pullback", 
+                                                     entry=P, sl=max(H, E9+(atr)), target=P-(2*atr), regime=regime)
 
             # ---------------------------------------------------------
             # 🟡 GEAR 2: ROTATION (Normal/High Vol)

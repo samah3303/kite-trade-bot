@@ -41,6 +41,9 @@ from unified_engine import (
 # Token Health
 import token_manager
 
+# Position Sizing (v3.1)
+import position_sizer
+
 # Setup
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -556,35 +559,58 @@ class RijinLiveEngine:
     # ---------------------------------------------------------------
     
     def execute_trade(self, signal, ai_result):
-        """Send trade alert to Telegram (no broker execution)"""
+        """Send trade alert to Telegram with dynamic position sizing (v3.1)"""
         risk = abs(signal['entry'] - signal['sl'])
-        quantity = int((INITIAL_CAPITAL * RISK_PER_TRADE) / risk) if risk > 0 else 0
         direction_label = "SHORT" if signal['direction'] == 'SELL' else "LONG"
+        gear = signal.get('gear', 'N/A')
+        
+        # v3.1: Dynamic position sizing from AI rubric score
+        risk_mult = position_sizer.calculate_risk_multiplier(ai_result, gear)
+        
+        # v3.1: Expiry protection — reduce size on expiry afternoons
+        now = now_ist()
+        from rijin_config import EXPIRY_DAYS
+        is_expiry = now.weekday() in EXPIRY_DAYS.values()
+        expiry_reduction = position_sizer.get_expiry_size_reduction(is_expiry, now.hour, now.minute)
+        
+        effective_risk = RISK_PER_TRADE * risk_mult * expiry_reduction
+        quantity = int((INITIAL_CAPITAL * effective_risk) / risk) if risk > 0 else 0
         
         reward = abs(signal['target'] - signal['entry'])
         rr_ratio = f"1:{reward / risk:.0f}" if risk > 0 else "1:0"
         
+        # Build size info string
+        size_info = f"{risk_mult:.2f}R"
+        if expiry_reduction < 1.0:
+            size_info += f" (Expiry -30%)"
+        
         logging.info(f"\n{'='*60}")
-        logging.info(f"📊 SIGNAL ACCEPTED BY AI")
+        logging.info(f"📊 SIGNAL ACCEPTED — Risk: {size_info}")
         logging.info(f"{'='*60}")
-        logging.info(f"Direction: {direction_label}")
+        logging.info(f"Direction: {direction_label} | Gear: {gear}")
         logging.info(f"Entry: {signal['entry']}  SL: {signal['sl']}  RR: {rr_ratio}")
-        logging.info(f"AI: {ai_result['decision']} ({ai_result['confidence']}%)")
+        logging.info(f"AI Score: {ai_result.get('total_score', 'N/A')}/10 | Qty: {quantity}")
         logging.info(f"{'='*60}\n")
         
-        # Send Telegram alert
-        reasons_text = ''.join('• ' + r + '\n' for r in ai_result['reasons'][:3])
+        # Build AI info for Telegram
+        ai_line = ""
+        if gear == 'GEAR_3_MOMENTUM':
+            ai_line = "⚡ <b>GEAR 3 — AI BYPASSED</b>"
+        else:
+            score = ai_result.get('total_score', '?')
+            ai_line = f"🤖 <b>AI Score: {score}/10</b> ({ai_result['confidence']}%)"
+        
+        reasons_text = ''.join('• ' + r + '\n' for r in ai_result.get('reasons', [])[:3])
         send_telegram_message(
-            f"🎯 <b>RIJIN SIGNAL — AI ACCEPTED</b>\n\n"
-            f"📅 {now_ist().strftime('%d %b %Y')} | ⏰ {now_ist().strftime('%H:%M:%S')}\n\n"
-            f"📍 Direction: <b>{direction_label}</b>\n"
+            f"🎯 <b>RIJIN v3.1 SIGNAL</b>\n\n"
+            f"📅 {now.strftime('%d %b %Y')} | ⏰ {now.strftime('%H:%M:%S')}\n\n"
+            f"📍 Direction: <b>{direction_label}</b> ({gear})\n"
             f"💵 Entry: {signal['entry']}\n"
             f"🛑 SL: {signal['sl']}\n"
             f"🎯 Target: {signal['target']}\n"
             f"📊 RR: {rr_ratio}\n"
-            f"📦 Qty: {quantity}\n"
-            f"💰 Risk: Rs.{int(INITIAL_CAPITAL * RISK_PER_TRADE):,}\n\n"
-            f"🤖 <b>AI: {ai_result['decision']}</b> ({ai_result['confidence']}%)\n"
+            f"📦 Qty: {quantity} | Risk: {size_info}\n\n"
+            f"{ai_line}\n"
             f"{reasons_text}\n"
             f"📈 RSI: {signal['rsi']:.1f} | ATR: {signal['atr']:.1f}"
         )
@@ -592,10 +618,12 @@ class RijinLiveEngine:
         # Store active trade for monitoring
         self.active_trade = {
             **signal,
-            'entry_time': now_ist(),
+            'entry_time': now,
             'quantity': quantity,
+            'risk_multiplier': risk_mult,
             'ai_decision': ai_result['decision'],
             'ai_confidence': ai_result['confidence'],
+            'ai_score': ai_result.get('total_score'),
         }
         
         self.daily_trades += 1
@@ -789,40 +817,67 @@ class RijinLiveEngine:
                     
                     if signal:
                         direction_label = "SHORT" if signal['direction'] == 'SELL' else "LONG"
+                        gear = signal.get('gear', 'N/A')
                         logging.info(
                             f"🔔 SIGNAL DETECTED: {direction_label} | "
-                            f"Gear: {signal.get('gear', 'N/A')} | "
+                            f"Gear: {gear} | "
                             f"Entry: {signal['entry']:.1f} | SL: {signal['sl']:.1f} | "
-                            f"TGT: {signal['target']:.1f} → Sending to AI..."
+                            f"TGT: {signal['target']:.1f}"
                         )
                         
-                        # Build market context
-                        market_context = self.build_market_context(candles, indicators)
+                        # v3.1: Expiry Protection — Block Gear 2 on expiry afternoons
+                        from rijin_config import EXPIRY_DAYS
+                        is_expiry = now.weekday() in EXPIRY_DAYS.values()
+                        if gear == 'GEAR_2_ROTATION' and position_sizer.should_block_gear2_expiry(is_expiry, now.hour, now.minute):
+                            logging.info(f"🚫 GEAR 2 BLOCKED — Expiry day after 1:30 PM")
+                            self.last_check_time = now
+                            continue
                         
-                        # ===== LAYER 3: AI VALIDATOR =====
-                        ai_result = self.validate_signal_with_ai(market_context, signal)
-                        
-                        if ai_result['decision'] == 'ACCEPT':
-                            # ===== LAYER 4: TELEGRAM ALERT =====
-                            logging.info(f"✅ AI ACCEPTED: {ai_result['confidence']}% confidence")
+                        # ===== LAYER 3: ROUTING ENGINE (v3.1) =====
+                        if gear == 'GEAR_3_MOMENTUM':
+                            # Gear 3: Bypass AI — fire immediately for speed
+                            logging.info("⚡ GEAR 3 — AI BYPASSED for speed")
+                            ai_result = {
+                                "decision": "ACCEPT",
+                                "confidence": 70,
+                                "total_score": 7,
+                                "reasons": ["Gear 3 — AI bypassed for speed"],
+                            }
                             self.execute_trade(signal, ai_result)
                         else:
-                            # AI RESTRICTED — send alert
-                            logging.info(
-                                f"⚠️ AI RESTRICTED: {direction_label} | "
-                                f"Confidence: {ai_result['confidence']}% | "
-                                f"{'; '.join(ai_result['reasons'][:2])}"
+                            # Gear 1/2: Route through AI validator
+                            logging.info(f"🤖 Routing to AI validator...")
+                            market_context = self.build_market_context(candles, indicators)
+                            ai_result = self.validate_signal_with_ai(market_context, signal)
+                            
+                            # Log AI rubric scores
+                            score_str = (
+                                f"T:{ai_result.get('trend_score','?')} "
+                                f"M:{ai_result.get('momentum_score','?')} "
+                                f"V:{ai_result.get('vwap_score','?')} "
+                                f"P:{ai_result.get('phase_score','?')} "
+                                f"S:{ai_result.get('structure_score','?')} "
+                                f"= {ai_result.get('total_score', ai_result.get('confidence', '?'))}/10"
                             )
                             
-                            reasons_text = ''.join('• ' + r + '\n' for r in ai_result['reasons'][:3])
-                            send_telegram_message(
-                                f"⚠️ <b>SIGNAL RESTRICTED BY AI</b>\n\n"
-                                f"📅 {now.strftime('%d %b %Y')} | ⏰ {now.strftime('%H:%M:%S')}\n\n"
-                                f"📍 {direction_label} ({signal.get('gear', 'N/A')})\n"
-                                f"💵 Entry: {signal['entry']} | SL: {signal['sl']}\n\n"
-                                f"🤖 <b>AI: RESTRICT</b> ({ai_result['confidence']}%)\n"
-                                f"{reasons_text}"
-                            )
+                            if ai_result['decision'] == 'ACCEPT':
+                                logging.info(f"✅ AI ACCEPTED [{score_str}]")
+                                self.execute_trade(signal, ai_result)
+                            else:
+                                logging.info(
+                                    f"⚠️ AI RESTRICTED: {direction_label} [{score_str}] | "
+                                    f"{'; '.join(ai_result['reasons'][:2])}"
+                                )
+                                
+                                reasons_text = ''.join('• ' + r + '\n' for r in ai_result['reasons'][:3])
+                                send_telegram_message(
+                                    f"⚠️ <b>SIGNAL RESTRICTED BY AI</b>\n\n"
+                                    f"📅 {now.strftime('%d %b %Y')} | ⏰ {now.strftime('%H:%M:%S')}\n\n"
+                                    f"📍 {direction_label} ({gear})\n"
+                                    f"💵 Entry: {signal['entry']} | SL: {signal['sl']}\n\n"
+                                    f"🤖 <b>AI: RESTRICT</b> [{score_str}]\n"
+                                    f"{reasons_text}"
+                                )
                     else:
                         if is_new_candle:
                             logging.info(f"🔍 Scan complete — no signal")

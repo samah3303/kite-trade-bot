@@ -1,6 +1,6 @@
 # What We're Building & Why — Partner Update
 
-> **Date:** March 3, 2026
+> **Date:** March 4, 2026
 > **System:** KiteAlerts Trading Bot
 > **For:** Non-technical trading partner review
 
@@ -48,12 +48,12 @@ Currently, there's no record of what trades fired, what the AI said, what happen
 
 ---
 
-**3. Token Expiry Alert**
+**3. Token Expiry Alert** ✅ DONE
 Zerodha tokens expire every day. If nobody logs in before market open, the bot sits there doing nothing.
 
-→ **Fix:** Bot detects expired token and sends a Telegram message with the login link. Takes 10 seconds to fix from your phone.
+→ **Implemented:** Bot auto-detects expired token, sends a Telegram message with the login link, and shows a red banner on the dashboard. After login, engines auto-refresh — no restart needed.
 
-**Why it matters:** Prevents missed trading days because someone forgot to log in.
+**Why it matters:** Prevents missed trading days. Takes 10 seconds to fix from your phone.
 
 ---
 
@@ -137,7 +137,7 @@ CURRENT STATE (Today)
 AFTER WEEK 1-2
 ├── Hard daily loss cap → Can't blow up
 ├── Full trade journal → Every trade recorded
-├── Token alerts → No missed days
+├── Token alerts → No missed days ✅ DONE
 ├── Smarter sizing → More on best setups
 └── Better AI → Consistent decisions
 
@@ -178,7 +178,7 @@ AFTER WEEK 3-4
 
 | Week       | What Gets Done                          | Risk Level                       |
 | ---------- | --------------------------------------- | -------------------------------- |
-| **Week 1** | Loss cap + trade journal + token alerts | Zero risk (safety features)      |
+| **Week 1** | Loss cap + trade journal                | Zero risk (safety features)      |
 | **Week 2** | Position sizing + slippage + AI rubric  | Low risk (tuning, not new logic) |
 | **Week 3** | Volume filter + time rules + backtester | Low risk (additional filters)    |
 | **Week 4** | AI audit + dashboard analytics          | Zero risk (measurement only)     |

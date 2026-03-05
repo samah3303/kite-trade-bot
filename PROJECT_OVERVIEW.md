@@ -43,18 +43,18 @@ Traditional rule-based gates (v1–v2) worked but were rigid. Markets evolve. Th
 
 ### System Identity
 
-| Attribute          | Value                                            |
-| ------------------ | ------------------------------------------------ |
-| **Name**           | RIJIN System v3.0.1                              |
-| **Type**           | Automated Intraday Trading Alert Bot             |
-| **Market**         | Indian Equities (NSE/BSE)                        |
-| **Instruments**    | Nifty 50 (primary), Sensex (secondary)           |
-| **Timeframe**      | 5-minute candles, 30-minute trend confirmation   |
-| **Broker**         | Zerodha (via Kite Connect API)                   |
-| **AI Provider**    | Groq (Llama 3.3 70B) for trade quality filtering |
-| **Alert Delivery** | Telegram Bot                                     |
-| **Dashboard**      | Flask Web UI                                     |
-| **Deployment**     | Render.com (cloud) / Oracle Cloud (self-hosted)  |
+| Attribute          | Value                                             |
+| ------------------ | ------------------------------------------------- |
+| **Name**           | KiteAlerts (RIJIN v3.0.1 + MODE_DON)              |
+| **Type**           | Automated Intraday Trading Alert Bot              |
+| **Market**         | Indian Equities (NSE/BSE)                         |
+| **Instruments**    | Nifty 50, Sensex, Bank Nifty                      |
+| **Timeframe**      | 5-minute candles                                  |
+| **Broker**         | Zerodha (via Kite Connect API)                    |
+| **AI Provider**    | Groq (Llama 3.3 70B) — RIJIN only. MODE_DON: none |
+| **Alert Delivery** | Telegram Bot                                      |
+| **Dashboard**      | Flask Web UI                                      |
+| **Deployment**     | Render.com (cloud) / Oracle Cloud (self-hosted)   |
 
 ### What Does It Do?
 
@@ -94,6 +94,22 @@ A separate Sensex-specific engine with 3 trade buckets:
 - **CORE** — High-conviction trend pullbacks (always active)
 - **STABILITY** — VWAP mean-reversion (activates after 1:30 PM if under 3 trades)
 - **LIQUIDITY** — Day-high/low breakout/breakdown (activates after 2:45 PM if under 5 trades)
+
+#### MODE_DON — Regime-Gated Breakout Engine (3 Instruments)
+
+A fully deterministic Donchian breakout engine. **No AI.** Runs in parallel with RIJIN.
+
+| Feature         | Detail                                                    |
+| --------------- | --------------------------------------------------------- |
+| **Instruments** | Nifty 50, Sensex, Bank Nifty                              |
+| **Pre-12 PM**   | Provisional early gate (expansion + VWAP hold + ATR gate) |
+| **12:00 PM**    | Full 4-metric regime scoring (0–8). 5+ = trading allowed  |
+| **Entry**       | Donchian breakout on close confirmation only              |
+| **Stop/Trail**  | 10-period Donchian OR 1.2× ATR, trailing, no fixed target |
+| **Risk**        | Max 3 concurrent, -3R system cap, per-instrument caps     |
+| **Degradation** | One-way only — regime can worsen, never improve           |
+
+> See `MODE_DON_GUIDE.md` for the full non-technical explanation.
 
 #### Legacy Modes (Unified Engine)
 
@@ -161,7 +177,7 @@ User  →  /login  →  Zerodha Login Page  →  /callback  →  Access Token sa
 4. Flask exchanges the `request_token` for an `access_token` and saves it in `.env`.
 5. The bot uses this token for all Kite API calls (historical data, LTP).
 
-> **Note:** Access tokens expire daily. A utility script `get_access_token.py` can also generate tokens manually via CLI.
+> **Note:** Access tokens expire daily. The system auto-detects expired tokens, sends a Telegram alert with the login URL, and shows a red banner on the dashboard. After login, the callback refreshes tokens in all running engines — no restart required.
 
 ### Main Trading Loop (Simplified)
 
@@ -243,17 +259,21 @@ The AI receives a structured JSON payload with:
 
 ### Environment Variables
 
-| Variable             | Required | Description                                       |
-| -------------------- | -------- | ------------------------------------------------- |
-| `KITE_API_KEY`       | ✅       | Zerodha API key                                   |
-| `KITE_API_SECRET`    | ✅       | Zerodha API secret                                |
-| `KITE_ACCESS_TOKEN`  | ✅       | Daily access token (auto-updated)                 |
-| `TELEGRAM_BOT_TOKEN` | ✅       | Telegram bot token                                |
-| `TELEGRAM_CHAT_ID`   | ✅       | Telegram chat ID for alerts                       |
-| `GROQ_API_KEY`       | ✅       | Groq API key for AI filtering                     |
-| `NIFTY_INSTRUMENT`   | ❌       | Instrument string (default: `NSE:NIFTY 50`)       |
-| `USE_RIJIN_SYSTEM`   | ❌       | Set `true` to use RIJIN v3.0.1 (default: `false`) |
-| `FLASK_SECRET_KEY`   | ❌       | Flask session secret                              |
+| Variable               | Required | Description                                          |
+| ---------------------- | -------- | ---------------------------------------------------- |
+| `KITE_API_KEY`         | ✅       | Zerodha API key                                      |
+| `KITE_API_SECRET`      | ✅       | Zerodha API secret                                   |
+| `KITE_ACCESS_TOKEN`    | ✅       | Daily access token (auto-updated via login callback) |
+| `TELEGRAM_BOT_TOKEN`   | ✅       | Telegram bot token                                   |
+| `TELEGRAM_CHAT_ID`     | ✅       | Telegram chat ID for alerts                          |
+| `GROQ_API_KEY`         | ✅       | Groq API key for AI filtering (RIJIN)                |
+| `NIFTY_INSTRUMENT`     | ❌       | Instrument string (default: `NSE:NIFTY 50`)          |
+| `SENSEX_INSTRUMENT`    | ❌       | Sensex instrument (default: `BSE:SENSEX`)            |
+| `BANKNIFTY_INSTRUMENT` | ❌       | Bank Nifty instrument (default: `NSE:NIFTY BANK`)    |
+| `USE_RIJIN_SYSTEM`     | ❌       | Set `true` to use RIJIN v3.0.1 (default: `false`)    |
+| `MODE_DON_ENABLED`     | ❌       | Set `true` to enable MODE_DON (default: `true`)      |
+| `RENDER_EXTERNAL_URL`  | ❌       | Your Render URL — used for token alert login links   |
+| `FLASK_SECRET_KEY`     | ❌       | Flask session secret                                 |
 
 ### Running Locally
 
@@ -303,8 +323,9 @@ services:
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                    FLASK DASHBOARD (app.py)                   │
-│  /login  /callback  /start  /stop  /status  /logs            │
-│  /rijin/stats  /rijin/v3/live-stats  /rijin/v3/backtest      │
+│  /login  /callback  /start  /stop  /status  /logs  /auth-status  │
+│  /rijin/stats  /rijin/v3/live-stats                               │
+│  /mode-don/start  /mode-don/stop  /mode-don/stats                 │
 └──────────────────┬───────────────────────────────────────────┘
                    │ starts/stops
                    ▼
@@ -351,31 +372,54 @@ Supporting Engines (rijin_engine.py — used by legacy path):
   └── ModePermissionChecker — Mode/day-type permission matrix
 ```
 
+```
+┌──────────────────────────────────────────────────────────────┐
+│              MODE_DON ENGINE (Parallel)                       │
+│              mode_don_engine.py + mode_don_config.py          │
+│                                                              │
+│  ┌──────────────────┐  ┌──────────────┐  ┌──────────────┐   │
+│  │ Early Regime Gate │  │ 12PM Regime  │  │ Donchian     │   │
+│  │ (9:45 AM check)  │  │ Scoring      │  │ Breakout     │   │
+│  │ Expansion+VWAP   │  │ (0–8 score)  │  │ Entry/Trail  │   │
+│  │ +ATR gate        │  │ One-way      │  │ Close only   │   │
+│  └──────────────────┘  └──────────────┘  └──────────────┘   │
+│                                                              │
+│  Instruments: NIFTY 50 | SENSEX | BANK NIFTY                │
+│  AI Layer: NOT USED                                          │
+└──────────────────────────────────────────────────────────────┘
+
+Shared:
+  ├── token_manager.py    — Token health, expiry alerts, login URL
+  ├── unified_engine.py   — EMA, RSI, ATR, Telegram utilities
+  └── dashboard.html      — Combined UI for both engines
+
 ---
 
 ## 📁 File Map
 
-| File                            | Lines | Purpose                                                                                                |
-| ------------------------------- | ----- | ------------------------------------------------------------------------------------------------------ |
-| **`app.py`**                    | 182   | Flask web server — dashboard, OAuth login, bot control endpoints                                       |
-| **`rijin_live.py`**             | 813   | **Core live engine** — main trading loop, indicator calc, AI validation, Telegram alerts               |
-| **`rijin_engine.py`**           | 1316  | **Trading rule engine** — Day type classification, impulse detection, execution gates, phase filtering |
-| **`rijin_config.py`**           | 369   | **All configuration** — thresholds, timings, day type hierarchy, Telegram templates                    |
-| **`rijin_live_runner.py`**      | 115   | Thread wrapper — bridges Flask dashboard to the live engine                                            |
-| **`mode_f_engine.py`**          | 232   | **MODE_F 3-Gear signal engine** — Gear 1 (Trend), Gear 2 (Rotation), Gear 3 (Momentum)                 |
-| **`mode_s_engine.py`**          | 215   | **MODE_S Sensex engine** — Core/Stability/Liquidity buckets                                            |
-| **`gemini_helper.py`**          | 278   | **AI helper** — Groq/Gemini API calls for trade quality evaluation                                     |
-| **`unified_engine.py`**         | 1397  | Legacy unified engine — Nifty/BankNifty/Gold strategies, utility functions (EMA, RSI, ATR)             |
-| **`global_market_analyzer.py`** | 309   | Global market context — fetches S&P500, Nasdaq, VIX, DXY via yfinance                                  |
-| **`mode_d_helpers.py`**         | 205   | MODE_D (Opening Drive) helper methods                                                                  |
-| **`get_access_token.py`**       | 41    | CLI utility to generate daily Kite access token                                                        |
-| **`example_daily_limit.py`**    | 33    | Example: daily signal cap implementation                                                               |
-| **`render.yaml`**               | 28    | Render.com deployment blueprint                                                                        |
-| **`requirements.txt`**          | 10    | Python dependencies                                                                                    |
-| **`.env.example`**              | 15    | Environment variable template                                                                          |
-| **`.gitignore`**                | —     | Git ignore rules                                                                                       |
-| **`Procfile`**                  | —     | Gunicorn process definition                                                                            |
-| **`templates/dashboard.html`**  | —     | Flask dashboard HTML template                                                                          |
+| File                            | Purpose                                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **`app.py`**                    | Flask web server — dashboard, OAuth login, bot control, MODE_DON endpoints, auth-status                |
+| **`rijin_live.py`**             | **RIJIN live engine** — main trading loop, indicator calc, AI validation, Telegram alerts               |
+| **`rijin_engine.py`**           | **Trading rule engine** — Day type classification, impulse detection, execution gates                  |
+| **`rijin_config.py`**           | **RIJIN config** — thresholds, timings, day type hierarchy, Telegram templates                         |
+| **`rijin_live_runner.py`**      | Thread wrapper — bridges Flask dashboard to the RIJIN engine                                           |
+| **`mode_f_engine.py`**          | **MODE_F 3-Gear signal engine** — Gear 1 (Trend), Gear 2 (Rotation), Gear 3 (Momentum)                |
+| **`mode_s_engine.py`**          | **MODE_S Sensex engine** — Core/Stability/Liquidity buckets                                            |
+| **`mode_don_engine.py`**        | **MODE_DON engine** — RegimeEngine, DonchianSignalEngine, ModeDonInstrument, orchestrator              |
+| **`mode_don_config.py`**        | **MODE_DON config** — instruments, thresholds, early gate, risk governance, Telegram templates          |
+| **`mode_don_runner.py`**        | Thread wrapper — bridges Flask dashboard to the MODE_DON engine                                        |
+| **`token_manager.py`**          | **Token health** — detects expired tokens, sends Telegram alert with login URL, dashboard status       |
+| **`gemini_helper.py`**          | **AI helper** — Groq/Gemini API calls for trade quality evaluation                                     |
+| **`unified_engine.py`**         | Legacy unified engine — utility functions (EMA, RSI, ATR, Telegram sender)                             |
+| **`global_market_analyzer.py`** | Global market context — fetches S&P500, Nasdaq, VIX, DXY via yfinance                                 |
+| **`get_access_token.py`**       | CLI utility to generate daily Kite access token                                                        |
+| **`render.yaml`**               | Render.com deployment blueprint                                                                        |
+| **`requirements.txt`**          | Python dependencies                                                                                    |
+| **`templates/dashboard.html`**  | Flask dashboard — RIJIN stats, MODE_DON cards, token banner, console                                   |
+| **`MODE_DON_GUIDE.md`**         | Non-technical guide to MODE_DON                                                                        |
+| **`MODE_DON_PARTNER_NOTE.md`**  | Partner-facing system overview and roadmap                                                              |
+| **`IMPLEMENTATION_PLAN.md`**    | Full technical implementation roadmap                                                                  |
 
 ---
 
@@ -393,6 +437,11 @@ Supporting Engines (rijin_engine.py — used by legacy path):
 
 6. **Groq over Gemini for AI Filter** — Despite the filename `gemini_helper.py`, the trade quality filter uses Groq's Llama 3.3 70B (faster, cheaper, more reliable for the structured JSON output required). Gemini is retained for market sentiment and exit analysis.
 
+7. **Dual Engine Architecture** — RIJIN and MODE_DON run independently in parallel threads. They share utilities (EMA, ATR, Telegram) but have separate Kite instances, separate config, and separate risk pools. If one fails or disables, the other is unaffected.
+
+8. **Token Health Management** — `token_manager.py` centralizes auth error detection. Both engines call `handle_api_error()` from their except blocks. One Telegram alert per day with login URL — no spam. Dashboard shows red banner when token is expired.
+
 ---
 
 _Built with discipline. Deployed with conviction. Protecting capital above all else._
+```

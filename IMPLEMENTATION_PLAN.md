@@ -1,7 +1,7 @@
 # 🛠 KiteAlerts — Implementation Plan
 
 > Full system roadmap covering RIJIN v3.0.1 upgrades and MODE_DON expansion.
-> Updated: March 2, 2026
+> Updated: March 4, 2026
 
 ---
 
@@ -181,29 +181,41 @@ Risk: Max 3 concurrent | -3R system cap | 3 consecutive losses disables instrume
 
 ---
 
-### 1.3 Auto Access Token Refresh
+### ✅ 1.3 Auto Access Token Refresh (DONE)
 
 **Problem:** Kite tokens expire daily. Someone must manually log in every morning.
 
-**Implementation:**
+**Implemented:**
+
+#### [NEW] `token_manager.py`
+
+- Detects auth errors in any Kite API call (`is_token_error()` keyword matching)
+- Sends Telegram alert with login URL (once per day, no spam)
+- Exposes `get_token_status()` for dashboard
+- `handle_api_error()` — single entry point used by both engines
 
 #### [MODIFY] `rijin_live.py`
 
-- Detect `TokenException` or 403 in `fetch_candles_5m()`
-- On auth failure, send Telegram alert with the login URL:
-  ```
-  🔑 TOKEN EXPIRED
-  Click to re-login: {kite.login_url()}
-  Engine paused until token refreshed.
-  ```
-- Add a `/refresh-token` webhook endpoint in `app.py` that Zerodha can callback to
+- `_resolve_instrument_token()` and `fetch_candles_5m()` call `token_manager.handle_api_error()`
+- On auth failure → Telegram alert with login link, no duplicate messages
+- Reads token fresh from `os.getenv()` at init (not stale module-level constant)
+
+#### [MODIFY] `mode_don_engine.py`
+
+- `_resolve_tokens()` and `fetch_candles()` call `token_manager.handle_api_error()`
 
 #### [MODIFY] `app.py`
 
-- Add `/auth-status` endpoint that returns token health
-- Add auto-redirect: if token is invalid on dashboard load, show login button prominently
+- Added `/auth-status` endpoint (checks token health via `kite.profile()`)
+- `/status` includes token status in response
+- `/callback` now refreshes tokens in ALL running engines (RIJIN + MODE_DON) — no restart needed
 
-**Effort:** ~1 hour · **Impact:** High (operational reliability)
+#### [MODIFY] `dashboard.html`
+
+- Red token banner (hidden when healthy, auto-checks every 30 seconds)
+- "Login to Zerodha →" button when token expired
+
+**Status:** ✅ Done (March 4, 2026)
 
 ---
 
@@ -415,7 +427,7 @@ Risk: Max 3 concurrent | -3R system cap | 3 consecutive losses disables instrume
 | ✅  | **MODE_DON Engine**      | 6+ hrs  | 🔴 Critical | **P0**   | **Done** |
 | 1.1 | Daily Drawdown Breaker   | 30 min  | 🔴 Critical | **P0**   | Pending  |
 | 1.2 | Trade Journal (SQLite)   | 2-3 hrs | 🔴 Critical | **P0**   | Pending  |
-| 1.3 | Token Expiry Handling    | 1 hr    | 🟡 High     | **P1**   | Pending  |
+| ✅  | **Token Expiry Alert**   | 1 hr    | 🟡 High     | **P1**   | **Done** |
 | 2.1 | Dynamic Position Sizing  | 1-2 hrs | 🟡 Medium   | **P2**   | Pending  |
 | 2.2 | Slippage Buffer          | 30 min  | 🟡 Medium   | **P2**   | Pending  |
 | 2.3 | AI Prompt Scoring Rubric | 1 hr    | 🟡 High     | **P1**   | Pending  |
@@ -431,7 +443,8 @@ Risk: Max 3 concurrent | -3R system cap | 3 consecutive losses disables instrume
 
 ```
 Done:    MODE_DON (config + engine + runner + dashboard + guide)
-Week 1:  1.1 (drawdown breaker) → 1.2 (trade journal) → 1.3 (token handling)
+Done:    Token expiry alert (token_manager + dashboard banner + Telegram)
+Week 1:  1.1 (drawdown breaker) → 1.2 (trade journal)
 Week 2:  2.3 (AI rubric) → 2.1 (position sizing) → 2.2 (slippage)
 Week 3:  3.1 (volume) → 3.2 (time gears) → 4.1 (backtester)
 Week 4:  4.3 (AI audit) → 4.2 (dashboard) → 5.6 (MODE_DON backtester)
@@ -441,6 +454,7 @@ Week 4:  4.3 (AI audit) → 4.2 (dashboard) → 5.6 (MODE_DON backtester)
 
 ---
 
-_Plan updated: March 2, 2026_
+_Plan updated: March 4, 2026_
 _System: RIJIN v3.0.1 + MODE_DON_
 _MODE_DON Status: ✅ Production-ready_
+_Token Manager: ✅ Live_

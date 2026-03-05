@@ -145,17 +145,13 @@ class GeminiHelper:
 
     def evaluate_trade_quality(self, market_context, signal_data):
         """
-        AI Trade Quality Filter — Institutional-grade validation.
+        AI Trade Quality Filter — Deterministic 5-Point Rubric (v3.1).
         
-        Does NOT generate signals, change direction, or modify SL/RR.
-        Only returns ACCEPT or RESTRICT with confidence score.
+        Scores trade on 5 criteria (0-2 each, total 0-10).
+        Total >= 6 → ACCEPT, < 6 → RESTRICT.
         
-        Args:
-            market_context: dict with RSI, ATR, EMA position, VWAP distance, etc.
-            signal_data: dict with direction, entry, SL, target, gear
-            
         Returns:
-            dict: {"decision": "ACCEPT"|"RESTRICT", "confidence": 0-100, "reasons": [...]}
+            dict with decision, confidence, total_score, sub-scores, reasons
             or None on failure (caller should treat as ACCEPT)
         """
         if not self.enabled:
@@ -165,32 +161,26 @@ class GeminiHelper:
             context_json = json.dumps(market_context, indent=2, default=str)
             signal_json = json.dumps(signal_data, indent=2, default=str)
 
-            prompt = f"""You are an institutional intraday trade quality filter.
+            prompt = f"""You are an institutional quantitative risk manager. Evaluate the provided 17-parameter market context JSON for the proposed trade.
+Do not provide opinions. Score the trade strictly using this 5-point rubric (0 to 2 points each):
 
-Your role:
-Evaluate whether the proposed trade aligns with current market structure and context.
+1. Trend Alignment:
+   (2 = Perfectly aligned with VWAP and Structure, 1 = Neutral/Early shift, 0 = Counter-trend)
+2. Momentum State (RSI):
+   (2 = Supportive slope, 1 = Flat, 0 = Exhausted/Diverging)
+3. VWAP Proximity:
+   (2 = Near VWAP/Fresh cross, 1 = Moderate distance, 0 = Overextended by >0.4%)
+4. Expansion Phase:
+   (2 = Early impulse <1.5x ATR, 1 = Mid-trend, 0 = Late cycle >2.5x ATR)
+5. Structure Quality:
+   (2 = Clean HH-HL / LL-LH, 1 = Mixed, 0 = Choppy/Overlapping)
 
-IMPORTANT RULES:
-- Do NOT predict market direction.
-- Do NOT modify entry, SL, or RR.
-- Do NOT generate a new trade.
-- Do NOT explain market theory.
-- Only evaluate trade quality.
+Calculate the Total Score (0-10).
+If Total Score >= 6: Output "decision": "ACCEPT"
+If Total Score < 6: Output "decision": "RESTRICT"
 
-You must return output strictly in this JSON format:
-{{
-    "decision": "ACCEPT" or "RESTRICT",
-    "confidence": 0-100,
-    "reasons": ["reason 1", "reason 2", "reason 3"]
-}}
-
-Evaluation Criteria:
-- Is the trade aligned with primary trend?
-- Is it late in an expansion leg?
-- Is momentum supportive or exhausted?
-- Is volatility expanding or fading?
-- Is price overextended from VWAP or session extremes?
-- Is this occurring during unstable transition phase?
+Return ONLY this JSON — no other text:
+{{"trend_score": <0-2>, "momentum_score": <0-2>, "vwap_score": <0-2>, "phase_score": <0-2>, "structure_score": <0-2>, "total_score": <0-10>, "decision": "ACCEPT" or "RESTRICT", "confidence": <total_score * 10>, "reasons": ["reason1", "reason2", "reason3"]}}
 
 Market Context:
 {context_json}
@@ -217,11 +207,11 @@ Proposed Signal:
             payload = {
                 "model": "llama-3.3-70b-versatile",
                 "messages": [
-                    {"role": "system", "content": "You are an institutional intraday trade quality filter. Return ONLY valid JSON."},
+                    {"role": "system", "content": "You are an institutional quantitative risk manager. Return ONLY valid JSON with the exact schema requested. No additional text."},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": 0.1,
-                "max_tokens": 300,
+                "temperature": 0.05,
+                "max_tokens": 400,
                 "response_format": {"type": "json_object"},
             }
 
@@ -235,19 +225,32 @@ Proposed Signal:
                         text = text.replace('```json', '').replace('```', '').strip()
                         parsed = json.loads(text)
 
-                        # Validate response structure
-                        decision = parsed.get('decision', 'ACCEPT').upper()
-                        confidence = int(parsed.get('confidence', 50))
-                        reasons = parsed.get('reasons', [])
+                        # Extract sub-scores
+                        trend_score = max(0, min(2, int(parsed.get('trend_score', 0))))
+                        momentum_score = max(0, min(2, int(parsed.get('momentum_score', 0))))
+                        vwap_score = max(0, min(2, int(parsed.get('vwap_score', 0))))
+                        phase_score = max(0, min(2, int(parsed.get('phase_score', 0))))
+                        structure_score = max(0, min(2, int(parsed.get('structure_score', 0))))
 
-                        if decision not in ('ACCEPT', 'RESTRICT'):
-                            decision = 'ACCEPT'
-                        confidence = max(0, min(100, confidence))
+                        # Recompute total to prevent LLM math errors
+                        total_score = trend_score + momentum_score + vwap_score + phase_score + structure_score
+                        decision = "ACCEPT" if total_score >= 6 else "RESTRICT"
+                        confidence = total_score * 10
+
+                        reasons = parsed.get('reasons', [])
+                        if not isinstance(reasons, list):
+                            reasons = [str(reasons)]
 
                         return {
                             "decision": decision,
                             "confidence": confidence,
-                            "reasons": reasons if isinstance(reasons, list) else [str(reasons)]
+                            "total_score": total_score,
+                            "trend_score": trend_score,
+                            "momentum_score": momentum_score,
+                            "vwap_score": vwap_score,
+                            "phase_score": phase_score,
+                            "structure_score": structure_score,
+                            "reasons": reasons,
                         }
 
                     elif response.status_code == 429:
