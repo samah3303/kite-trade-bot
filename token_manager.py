@@ -69,7 +69,7 @@ def _send_token_alert(error_msg):
         return
 
     try:
-        from unified_engine import send_telegram_message
+        from telegram_alerts import send_message as send_telegram_message
 
         api_key = os.getenv("KITE_API_KEY")
         dashboard_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:5000")

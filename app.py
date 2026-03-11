@@ -1,241 +1,162 @@
+"""
+KiteAlerts V6.0 — Flask Application
+Tri-Core: MODE_DON v2.2 · RIJIN v3.2 · MODE_VORTEX v1.0
+"""
+
 import os
-from flask import Flask, render_template, jsonify, Response, request, redirect, session, url_for
 import sys
-import time
 import io
 import threading
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime
+from flask import Flask, render_template, jsonify, Response, request, redirect, session, url_for
 from dotenv import load_dotenv, set_key
 from kiteconnect import KiteConnect
-import unified_engine as bot
+
 import token_manager
 
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "fallback_dev_secret_key")
-
-# Globals
-API_KEY = os.getenv("KITE_API_KEY")
-API_SECRET = os.getenv("KITE_API_SECRET")
-USE_RIJIN = os.getenv("USE_RIJIN_SYSTEM", "false").lower() == "true"
-MODE_DON_ENABLED = os.getenv("MODE_DON_ENABLED", "true").lower() == "true"
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "kitealerts_v6_secret")
 
 # Kite for login flow
+API_KEY = os.getenv("KITE_API_KEY")
+API_SECRET = os.getenv("KITE_API_SECRET")
 kite = KiteConnect(api_key=API_KEY)
 
-# Bot Selection
-if USE_RIJIN:
-    print("[RIJIN] Loading RIJIN SYSTEM v3.0.1...")
-    # Import the new RIJIN v3.0.1 live engine
-    try:
-        import rijin_live_runner  # We'll create this wrapper
-        active_bot = rijin_live_runner
-        bot_mode = "RIJIN v3.0.1"
-    except ImportError:
-        print("[WARN] rijin_live_runner not found, falling back to unified engine")
-        active_bot = bot.runner
-        bot_mode = "UNIFIED"
-else:
-    print("[ENGINE] Loading Unified Engine...")
-    active_bot = bot.runner
-    bot_mode = "UNIFIED"
-
-# Log Capture Setup
+# Log capture
 log_capture_string = io.StringIO()
-class LogCatcher(object):
+
+
+class LogCatcher:
     def write(self, data):
         log_capture_string.write(data)
         sys.__stdout__.write(data)
+
     def flush(self):
-        log_capture_string.flush()
-        sys.__stdout__.flush()
+        pass
+
 
 sys.stdout = LogCatcher()
 
-# Capture logging.* output (RIJIN engine uses logging, not print)
-import logging as _logging
-_log_handler = _logging.StreamHandler(log_capture_string)
-_log_handler.setLevel(_logging.DEBUG)
-_log_handler.setFormatter(_logging.Formatter('%(asctime)s - %(message)s'))
-_logging.root.addHandler(_log_handler)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-# Suppress Flask/Werkzeug request logs from dashboard console
-_logging.getLogger('werkzeug').propagate = False
-_logging.getLogger('werkzeug').handlers = [_logging.StreamHandler(sys.__stdout__)]
+# ===================================================================
+# ENGINE THREAD
+# ===================================================================
 
-@app.route('/')
-def home():
-    return render_template('dashboard.html')
+engine = None
+engine_thread = None
 
-@app.route('/login')
-def login_zerodha():
-    if not API_KEY:
-        return "API_KEY not set in .env"
-    login_url = kite.login_url()
-    return redirect(login_url)
 
-@app.route('/callback')
+def start_engine():
+    """Start the tri-core engine in a background thread."""
+    global engine, engine_thread
+    from engine_runner import TriCoreRunner
+
+    if engine and engine.running:
+        logging.info("Engine already running")
+        return
+
+    stop_event = threading.Event()
+    engine = TriCoreRunner(stop_event=stop_event)
+    engine_thread = threading.Thread(target=engine.run, daemon=True, name="TriCoreEngine")
+    engine_thread.start()
+    logging.info("🚀 Tri-Core Engine thread started")
+
+
+def stop_engine():
+    """Stop the engine."""
+    global engine
+    if engine:
+        engine.stop()
+        logging.info("🛑 Engine stop requested")
+
+
+# ===================================================================
+# ROUTES
+# ===================================================================
+
+@app.route("/")
+def dashboard():
+    stats = engine.get_stats() if engine else {"version": "V6.0", "running": False, "instruments": {}}
+    token_status = token_manager.get_token_status()
+    return render_template("dashboard.html", stats=stats, token_status=token_status)
+
+
+@app.route("/status")
+def status():
+    stats = engine.get_stats() if engine else {"running": False}
+    stats["token"] = token_manager.get_token_status()
+    return jsonify(stats)
+
+
+@app.route("/login")
+def login():
+    return redirect(kite.login_url())
+
+
+@app.route("/callback")
 def callback():
-    request_token = request.args.get('request_token')
+    """Zerodha OAuth callback — save token and refresh engine."""
+    request_token = request.args.get("request_token")
     if not request_token:
-        return "Error: No request_token received."
-        
+        return "Missing request_token", 400
+
     try:
         data = kite.generate_session(request_token, api_secret=API_SECRET)
-        access_token = data['access_token']
-        
+        access_token = data["access_token"]
+
         # Save to .env
-        set_key(".env", "KITE_ACCESS_TOKEN", access_token)
+        env_path = os.path.join(os.path.dirname(__file__), ".env")
+        set_key(env_path, "KITE_ACCESS_TOKEN", access_token)
         os.environ["KITE_ACCESS_TOKEN"] = access_token
-        
-        # Update ALL engine tokens
-        if not USE_RIJIN:
-            bot.ACCESS_TOKEN = access_token
-        
-        # Update RIJIN engine if running
-        try:
-            if hasattr(active_bot, 'engine') and active_bot.engine:
-                active_bot.engine.kite.set_access_token(access_token)
-                active_bot.engine._resolve_instrument_token()
-                print("🔑 RIJIN token refreshed via login")
-        except Exception:
-            pass
-        
-        # Update MODE_DON engine if running
-        try:
-            if MODE_DON_ENABLED:
-                import mode_don_runner
-                if mode_don_runner._engine:
-                    mode_don_runner._engine.kite.set_access_token(access_token)
-                    mode_don_runner._engine._resolve_tokens()
-                    print("🔑 MODE_DON token refreshed via login")
-        except Exception:
-            pass
-        
-        # Reset token alert state
-        token_manager.reset_daily_alert()
-        
-        return redirect(url_for('home'))
-        
+
+        # Refresh engine
+        kite.set_access_token(access_token)
+        if engine:
+            engine.refresh_token(access_token)
+
+        logging.info(f"✅ Token refreshed: {access_token[:8]}...")
+        return redirect("/")
+
     except Exception as e:
-        return f"Error exchanging token: {e}"
+        logging.error(f"Callback error: {e}")
+        return f"Login failed: {e}", 500
 
-@app.route('/start', methods=['POST'])
-def start_bot():
-    if not USE_RIJIN:
-        # Reload credentials for unified engine
-        bot.API_KEY = os.getenv("KITE_API_KEY")
-        bot.ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN")
-    
-    if active_bot.start():
-        return jsonify({"status": "started", "message": f"{bot_mode} Engine started successfully."})
-    return jsonify({"status": "error", "message": "Engine already running."})
 
-@app.route('/stop', methods=['POST'])
-def stop_bot():
-    active_bot.stop()
-    return jsonify({"status": "stopped", "message": "Engine stop signal sent."})
-
-@app.route('/status')
-def status():
-    # Check if bot thread is alive
-    if USE_RIJIN:
-        is_running = active_bot.thread and active_bot.thread.is_alive()
-    else:
-        is_running = active_bot.thread and active_bot.thread.is_alive()
-    
-    return jsonify({
-        "running": bool(is_running),
-        "mode": bot_mode,
-        "token": token_manager.get_token_status(),
-    })
-
-@app.route('/auth-status')
+@app.route("/auth-status")
 def auth_status():
-    """Check Kite token health — used by dashboard and monitoring."""
-    token_ok = token_manager.check_token_health(kite)
-    status = token_manager.get_token_status()
-    status["login_url"] = f"/login"
-    return jsonify(status)
+    valid = token_manager.check_token_health(kite)
+    return jsonify({"valid": valid, **token_manager.get_token_status()})
 
-@app.route('/logs')
+
+@app.route("/start-engine", methods=["POST"])
+def start_engine_route():
+    start_engine()
+    return jsonify({"status": "started"})
+
+
+@app.route("/stop-engine", methods=["POST"])
+def stop_engine_route():
+    stop_engine()
+    return jsonify({"status": "stopped"})
+
+
+@app.route("/logs")
 def logs():
-    content = log_capture_string.getvalue()
-    return jsonify({"logs": content[-5000:]})
+    log_content = log_capture_string.getvalue()
+    lines = log_content.split("\n")[-200:]
+    return Response("\n".join(lines), mimetype="text/plain")
 
-# ===== RIJIN AI-FILTERED ENDPOINTS =====
-@app.route('/rijin/stats')
-def rijin_stats():
-    """Get RIJIN AI-filtered stats"""
-    if not USE_RIJIN:
-        return jsonify({"error": "RIJIN not enabled"}), 400
-    try:
-        import rijin_live_runner
-        stats = rijin_live_runner.get_live_stats()
-        return jsonify(stats)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-# ===== RIJIN v3.0.1 SPECIFIC ENDPOINTS =====
-@app.route('/rijin/v3/live-stats')
-def rijin_v3_live_stats():
-    """Get RIJIN v3.0.1 real-time statistics"""
-    if not USE_RIJIN:
-        return jsonify({"error": "RIJIN not enabled"}), 400
-    
-    try:
-        import rijin_live_runner
-        stats = rijin_live_runner.get_live_stats()
-        return jsonify(stats)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+# ===================================================================
+# STARTUP
+# ===================================================================
 
-# Mode F Integration
-from mode_f_engine import ModeFEngine
-try:
-    from global_market_analyzer import GlobalMarketAnalyzer
-except ImportError:
-    GlobalMarketAnalyzer = None
-
-# ===== MODE_DON ENDPOINTS =====
-if MODE_DON_ENABLED:
-    try:
-        import mode_don_runner
-        print("[MODE_DON] Loaded MODE_DON Engine")
-    except ImportError:
-        print("[WARN] mode_don_runner not found. MODE_DON disabled.")
-        MODE_DON_ENABLED = False
-
-@app.route('/mode-don/start', methods=['POST'])
-def start_mode_don():
-    if not MODE_DON_ENABLED:
-        return jsonify({"status": "error", "message": "MODE_DON not enabled"}), 400
-    if mode_don_runner.start():
-        return jsonify({"status": "started", "message": "MODE_DON engine started."})
-    return jsonify({"status": "error", "message": "MODE_DON already running."})
-
-@app.route('/mode-don/stop', methods=['POST'])
-def stop_mode_don():
-    if not MODE_DON_ENABLED:
-        return jsonify({"status": "error", "message": "MODE_DON not enabled"}), 400
-    mode_don_runner.stop()
-    return jsonify({"status": "stopped", "message": "MODE_DON stop signal sent."})
-
-@app.route('/mode-don/stats')
-def mode_don_stats():
-    if not MODE_DON_ENABLED:
-        return jsonify({"running": False, "instruments": {}})
-    return jsonify(mode_don_runner.get_live_stats())
+# Auto-start engine on boot
+start_engine()
 
 if __name__ == "__main__":
-    print(f"\n{'='*60}")
-    print(f"Starting Flask Dashboard")
-    print(f"Mode: {bot_mode}")
-    if USE_RIJIN:
-        print(f"RIJIN v3.0.1 — AI-Filtered Architecture")
-    if MODE_DON_ENABLED:
-        print(f"MODE_DON — Regime-Gated Breakout Engine")
-    print(f"{'='*60}\n")
-    
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=False)

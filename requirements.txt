@@ -1,9 +1,7 @@
 flask
-numpy
+gunicorn
 kiteconnect
 python-dotenv
 requests
-pyotp
-pandas
-gunicorn
+numpy
 pytz

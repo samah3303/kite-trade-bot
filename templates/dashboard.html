@@ -1,912 +1,211 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RIJIN v3.0.1 Trading Console</title>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KiteAlerts V6.0 — Tri-Core Dashboard</title>
     <style>
-      :root {
-        --bg-primary: #0f172a;
-        --bg-secondary: #1e293b;
-        --card-bg: rgba(30, 41, 59, 0.6);
-        --accent: #3b82f6;
-        --accent-glow: rgba(59, 130, 246, 0.3);
-        --success: #10b981;
-        --success-glow: rgba(16, 185, 129, 0.3);
-        --danger: #ef4444;
-        --warning: #f59e0b;
-        --text-primary: #f8fafc;
-        --text-secondary: #94a3b8;
-        --text-muted: #64748b;
-        --border: rgba(255, 255, 255, 0.1);
-        --shadow: 0 20px 60px -15px rgba(0, 0, 0, 0.5);
-      }
-
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
-      body {
-        font-family:
-          "Inter",
-          -apple-system,
-          BlinkMacSystemFont,
-          sans-serif;
-        background: var(--bg-primary);
-        background-image:
-          radial-gradient(
-            at 0% 0%,
-            rgba(59, 130, 246, 0.15) 0px,
-            transparent 50%
-          ),
-          radial-gradient(
-            at 100% 100%,
-            rgba(16, 185, 129, 0.1) 0px,
-            transparent 50%
-          );
-        color: var(--text-primary);
-        min-height: 100vh;
-        padding: 20px;
-        overflow-x: hidden;
-      }
-
-      .container {
-        max-width: 1400px;
-        margin: 0 auto;
-      }
-
-      /* Header */
-      .header {
-        text-align: center;
-        margin-bottom: 40px;
-        animation: fadeInDown 0.6s ease-out;
-      }
-
-      .title {
-        font-size: clamp(2rem, 5vw, 3.5rem);
-        font-weight: 800;
-        background: linear-gradient(135deg, #60a5fa, #34d399);
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: -0.02em;
-        margin-bottom: 8px;
-      }
-
-      .subtitle {
-        color: var(--text-secondary);
-        font-size: clamp(0.75rem, 2vw, 0.9rem);
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        font-weight: 500;
-      }
-
-      /* Status Badge */
-      .status-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        background: var(--card-bg);
-        backdrop-filter: blur(20px);
-        border: 1px solid var(--border);
-        padding: 12px 24px;
-        border-radius: 50px;
-        margin: 20px 0;
-        box-shadow: var(--shadow);
-      }
-
-      .status-dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: var(--text-muted);
-      }
-
-      .status-dot.online {
-        background: var(--success);
-        box-shadow: 0 0 12px var(--success-glow);
-        animation: pulse 2s infinite;
-      }
-
-      @keyframes pulse {
-        0%,
-        100% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.6;
-        }
-      }
-
-      /* Controls */
-      .controls {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        justify-content: center;
-        margin-bottom: 40px;
-        animation: fadeInUp 0.6s ease-out 0.2s both;
-      }
-
-      .btn {
-        padding: 14px 28px;
-        border: none;
-        border-radius: 12px;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: white;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        font-family: "Inter", sans-serif;
-        position: relative;
-        overflow: hidden;
-      }
-
-      .btn:before {
-        content: "";
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 0;
-        height: 0;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.2);
-        transform: translate(-50%, -50%);
-        transition:
-          width 0.6s,
-          height 0.6s;
-      }
-
-      .btn:hover:before {
-        width: 300px;
-        height: 300px;
-      }
-
-      .btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
-      }
-
-      .btn-primary {
-        background: linear-gradient(135deg, #3b82f6, #2563eb);
-        box-shadow: 0 4px 16px var(--accent-glow);
-      }
-
-      .btn-success {
-        background: linear-gradient(135deg, #10b981, #059669);
-        box-shadow: 0 4px 16px var(--success-glow);
-      }
-
-      .btn-danger {
-        background: linear-gradient(135deg, #ef4444, #dc2626);
-        box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
-      }
-
-      /* Stats Grid */
-
-      .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        gap: 20px;
-        margin-bottom: 30px;
-        animation: fadeInUp 0.6s ease-out 0.3s both;
-      }
-
-      .stat-card {
-        background: var(--card-bg);
-        backdrop-filter: blur(20px);
-        border: 1px solid var(--border);
-        border-radius: 20px;
-        padding: 24px;
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        position: relative;
-        overflow: hidden;
-      }
-
-      .stat-card:before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: linear-gradient(
-          90deg,
-          transparent,
-          var(--accent),
-          transparent
-        );
-        opacity: 0;
-        transition: opacity 0.3s;
-      }
-
-      .stat-card:hover {
-        transform: translateY(-5px);
-        box-shadow: var(--shadow);
-        border-color: var(--accent);
-      }
-
-      .stat-card:hover:before {
-        opacity: 1;
-      }
-
-      .stat-label {
-        font-size: 0.75rem;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        margin-bottom: 12px;
-        font-weight: 600;
-      }
-
-      .stat-value {
-        font-size: 2rem;
-        font-weight: 800;
-        color: var(--text-primary);
-        margin-bottom: 8px;
-        line-height: 1;
-      }
-
-      .stat-sub {
-        font-size: 0.875rem;
-        color: var(--text-secondary);
-        font-weight: 500;
-      }
-
-      /* Active Trade Panel */
-      .trade-panel {
-        background: linear-gradient(
-          135deg,
-          rgba(16, 185, 129, 0.08),
-          rgba(59, 130, 246, 0.05)
-        );
-        border: 2px solid var(--success);
-        border-radius: 20px;
-        padding: 24px;
-        margin-bottom: 30px;
-        animation: fadeInUp 0.6s ease-out 0.4s both;
-        box-shadow: 0 0 30px var(--success-glow);
-      }
-
-      .trade-header {
-        font-size: 0.75rem;
-        color: var(--success);
-        font-weight: 700;
-        margin-bottom: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-      }
-
-      .trade-details {
-        font-size: 1.125rem;
-        font-weight: 600;
-        color: var(--text-primary);
-        line-height: 1.6;
-      }
-
-      /* Backtest Comparison */
-      .backtest-panel {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 24px;
-        background: var(--card-bg);
-        backdrop-filter: blur(20px);
-        border: 1px solid var(--border);
-        border-radius: 20px;
-        padding: 28px;
-        margin-bottom: 30px;
-        animation: fadeInUp 0.6s ease-out 0.5s both;
-      }
-
-      .backtest-col h3 {
-        font-size: 0.875rem;
-        color: var(--accent);
-        margin-bottom: 16px;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        font-weight: 700;
-      }
-
-      .backtest-col p {
-        margin: 10px 0;
-        color: var(--text-secondary);
-        font-size: 0.9rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .backtest-col span {
-        color: var(--text-primary);
-        font-weight: 700;
-        font-size: 1.1rem;
-      }
-
-      /* Console Log */
-      .console-panel {
-        animation: fadeInUp 0.6s ease-out 0.6s both;
-      }
-
-      .console-header {
-        font-size: 0.75rem;
-        color: var(--text-muted);
-        font-weight: 700;
-        margin-bottom: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-      }
-
-      .log-container {
-        background: #000;
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 20px;
-        height: 400px;
-        overflow-y: auto;
-        font-family: "Courier New", monospace;
-        font-size: 13px;
-        color: #e2e8f0;
-        line-height: 1.6;
-        box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
-      }
-
-      /* Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-
-      ::-webkit-scrollbar-track {
-        background: var(--bg-primary);
-        border-radius: 4px;
-      }
-
-      ::-webkit-scrollbar-thumb {
-        background: var(--text-muted);
-        border-radius: 4px;
-      }
-
-      ::-webkit-scrollbar-thumb:hover {
-        background: var(--text-secondary);
-      }
-
-      /* Animations */
-      @keyframes fadeInDown {
-        from {
-          opacity: 0;
-          transform: translateY(-20px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-
-      @keyframes fadeInUp {
-        from {
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-
-      /* Mobile Responsive */
-      @media (max-width: 768px) {
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-          padding: 16px;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0a0e17;
+            color: #e1e8f0;
+            min-height: 100vh;
         }
-
-        .stats-grid {
-          grid-template-columns: 1fr;
-          gap: 16px;
-        }
-
-        .stat-card {
-          padding: 20px;
-        }
-
-        .stat-value {
-          font-size: 1.75rem;
-        }
-
-        .backtest-panel {
-          grid-template-columns: 1fr;
-          gap: 20px;
-          padding: 20px;
-        }
-
-        .log-container {
-          height: 320px;
-          font-size: 12px;
-          padding: 16px;
-        }
-
-        .controls {
-          flex-direction: column;
-          width: 100%;
-        }
-
-        .btn {
-          width: 100%;
-          justify-content: center;
-        }
-      }
-
-      @media (max-width: 480px) {
         .header {
-          margin-bottom: 30px;
+            background: linear-gradient(135deg, #1a1f35 0%, #0d1220 100%);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-
-        .stat-value {
-          font-size: 1.5rem;
+        .header h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #6ee7b7, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
-
-        .trade-panel {
-          padding: 20px;
+        .header .version {
+            font-size: 0.85rem;
+            color: #64748b;
         }
-
-        .trade-details {
-          font-size: 1rem;
+        .status-bar {
+            display: flex;
+            gap: 12px;
+            align-items: center;
         }
-      }
+        .status-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        .status-dot.offline { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+        .token-banner {
+            background: #7f1d1d;
+            color: #fca5a5;
+            padding: 10px 30px;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .token-banner.show { display: flex; justify-content: space-between; align-items: center; }
+        .token-banner a { color: #fbbf24; font-weight: 600; text-decoration: none; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            padding: 24px;
+        }
+        .card {
+            background: linear-gradient(135deg, #131825 0%, #0f1320 100%);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 20px;
+            transition: border-color 0.3s;
+        }
+        .card:hover { border-color: rgba(59, 130, 246, 0.3); }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .card-header h3 { font-size: 1.1rem; font-weight: 600; }
+        .card-header .emoji { font-size: 1.3rem; }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+        .stat-row .value { color: #e1e8f0; font-weight: 500; }
+        .stat-row .value.positive { color: #22c55e; }
+        .stat-row .value.negative { color: #ef4444; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge.active { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+        .badge.disabled { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .badge.pending { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+        .controls {
+            padding: 0 24px 24px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-start { background: #22c55e; color: #0a0e17; }
+        .btn-start:hover { background: #16a34a; }
+        .btn-stop { background: #ef4444; color: white; }
+        .btn-stop:hover { background: #dc2626; }
+        .btn-login { background: #3b82f6; color: white; }
+        .btn-login:hover { background: #2563eb; }
+        .system-bar {
+            padding: 16px 24px;
+            background: #0d1220;
+            border-top: 1px solid rgba(255,255,255,0.04);
+            display: flex;
+            gap: 24px;
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+        .engines-label {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 12px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.04);
+        }
     </style>
-  </head>
-  <body>
-    <div class="container">
-      <!-- Header -->
-      <div class="header">
-        <h1 class="title">RIJIN v3.0.1</h1>
-        <p class="subtitle">
-          Impulse-Based Timing • Consecutive Loss Protection
-        </p>
-
-        <div class="status-badge">
-          <div class="status-dot" id="status-dot"></div>
-          <span id="status-text">SYSTEM OFFLINE</span>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>🚀 KiteAlerts V6.0</h1>
+            <span class="version">Tri-Core: MODE_DON · RIJIN · VORTEX</span>
         </div>
-      </div>
-
-      <!-- Controls -->
-      <div class="controls">
-        <a href="/login" class="btn btn-primary">
-          <svg
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            viewBox="0 0 24 24"
-          >
-            <path
-              d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"
-            />
-          </svg>
-          Login to Kite
-        </a>
-        <button class="btn btn-success" onclick="startBot()">
-          <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-          Start Engine
-        </button>
-        <button class="btn btn-danger" onclick="stopBot()">
-          <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M6 6h12v12H6z" />
-          </svg>
-          Stop Engine
-        </button>
-      </div>
-
-      <!-- Token Status Banner (hidden when healthy) -->
-      <div id="token-banner" style="display: none; margin-bottom: 20px; padding: 14px 20px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); border-radius: 12px; animation: fadeInUp 0.3s ease-out;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <span style="color: #ef4444; font-weight: 600;">
-            🔑 Kite Token Expired — Engines paused
-          </span>
-          <a href="/login" class="btn btn-success" style="padding: 8px 16px; font-size: 12px; text-decoration: none;">
-            Login to Zerodha →
-          </a>
+        <div class="status-bar">
+            <span class="status-dot {{ 'online' if stats.running else 'offline' }}" id="statusDot"></span>
+            <span id="statusText">{{ 'ONLINE' if stats.running else 'OFFLINE' }}</span>
         </div>
-        <div id="token-error" style="margin-top: 6px; font-size: 0.75rem; color: var(--text-muted);"></div>
-      </div>
+    </div>
 
-      <!-- Stats Grid -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Day Type</div>
-          <div class="stat-value" id="day-type">Unknown</div>
-          <div class="stat-sub" id="phase">Phase: Detecting...</div>
-        </div>
+    <div class="token-banner {{ 'show' if token_status.valid == false }}" id="tokenBanner">
+        <span>🔑 Token expired or invalid. Login required.</span>
+        <a href="/login">Login to Zerodha →</a>
+    </div>
 
-        <div class="stat-card">
-          <div class="stat-label">System Status</div>
-          <div class="stat-value" id="system-status">Offline</div>
-          <div class="stat-sub" id="pause-status">No pause</div>
-        </div>
+    <div class="controls">
+        <button class="btn btn-start" onclick="fetch('/start-engine',{method:'POST'}).then(()=>location.reload())">▶ Start Engine</button>
+        <button class="btn btn-stop" onclick="fetch('/stop-engine',{method:'POST'}).then(()=>location.reload())">⏹ Stop Engine</button>
+        <a href="/login" class="btn btn-login">🔑 Login to Zerodha</a>
+    </div>
 
-        <div class="stat-card">
-          <div class="stat-label">Daily P&L</div>
-          <div class="stat-value" id="daily-pnl">+0.00R</div>
-          <div class="stat-sub" id="daily-trades">0 trades</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-label">Consecutive Losses</div>
-          <div class="stat-value" id="consec-losses">0</div>
-          <div class="stat-sub" id="loss-status">✅ Active</div>
-        </div>
-      </div>
-
-      <!-- Active Trade Panel -->
-      <div class="trade-panel" id="trade-panel" style="display: none">
-        <div class="trade-header">⚡ Active Trade</div>
-        <div class="trade-details" id="trade-details"></div>
-      </div>
-
-
-
-      <!-- MODE_DON Section -->
-      <div style="margin-bottom: 30px; animation: fadeInUp 0.6s ease-out 0.55s both;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-          <div>
-            <h2 style="font-size: 1.3rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">
-              MODE_DON — Breakout Engine
-            </h2>
-            <p style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;">
-              Regime-Gated Donchian • No AI • Deterministic
-            </p>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-success" onclick="startModeDon()" style="padding: 10px 20px; font-size: 12px;">
-              ▶ Start DON
-            </button>
-            <button class="btn btn-danger" onclick="stopModeDon()" style="padding: 10px 20px; font-size: 12px;">
-              ■ Stop DON
-            </button>
-          </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
-          <!-- Nifty -->
-          <div class="stat-card" id="don-nifty-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-              <div class="stat-label" style="margin: 0;">🟦 NIFTY 50</div>
-              <span id="don-nifty-status" style="font-size: 0.7rem; padding: 4px 10px; border-radius: 20px; background: var(--bg-primary); color: var(--text-muted);">Offline</span>
+    <div class="grid">
+        {% for name, inst in stats.instruments.items() %}
+        <div class="card">
+            <div class="card-header">
+                <h3>{{ inst.emoji }} {{ inst.display_name }}</h3>
+                {% if inst.disabled %}
+                <span class="badge disabled">DISABLED</span>
+                {% elif inst.token_resolved %}
+                <span class="badge active">ACTIVE</span>
+                {% else %}
+                <span class="badge pending">NO TOKEN</span>
+                {% endif %}
             </div>
-            <div class="stat-value" id="don-nifty-regime" style="font-size: 1.3rem;">Awaiting 12 PM</div>
-            <div class="stat-sub" style="margin-top: 8px;">
-              Score: <span id="don-nifty-score">-</span>/8 •
-              P&L: <span id="don-nifty-pnl">+0.00R</span> •
-              Trades: <span id="don-nifty-trades">0</span>
+            <div class="stat-row">
+                <span>Daily Trades</span>
+                <span class="value">{{ inst.daily_trades }}</span>
             </div>
-            <div id="don-nifty-trade" style="display: none; margin-top: 8px; font-size: 0.8rem; color: var(--success);"></div>
-          </div>
-
-          <!-- Sensex -->
-          <div class="stat-card" id="don-sensex-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-              <div class="stat-label" style="margin: 0;">🟩 SENSEX</div>
-              <span id="don-sensex-status" style="font-size: 0.7rem; padding: 4px 10px; border-radius: 20px; background: var(--bg-primary); color: var(--text-muted);">Offline</span>
+            <div class="stat-row">
+                <span>Daily P&L</span>
+                <span class="value {{ 'positive' if inst.daily_pnl_r >= 0 else 'negative' }}">
+                    {{ '%+.2f'|format(inst.daily_pnl_r) }}R
+                </span>
             </div>
-            <div class="stat-value" id="don-sensex-regime" style="font-size: 1.3rem;">Awaiting 12 PM</div>
-            <div class="stat-sub" style="margin-top: 8px;">
-              Score: <span id="don-sensex-score">-</span>/8 •
-              P&L: <span id="don-sensex-pnl">+0.00R</span> •
-              Trades: <span id="don-sensex-trades">0</span>
+            <div class="stat-row">
+                <span>Active Trade</span>
+                <span class="value">{{ '✅ YES' if inst.active_trade else '—' }}</span>
             </div>
-            <div id="don-sensex-trade" style="display: none; margin-top: 8px; font-size: 0.8rem; color: var(--success);"></div>
-          </div>
-
-          <!-- Bank Nifty -->
-          <div class="stat-card" id="don-banknifty-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-              <div class="stat-label" style="margin: 0;">🟥 BANK NIFTY</div>
-              <span id="don-banknifty-status" style="font-size: 0.7rem; padding: 4px 10px; border-radius: 20px; background: var(--bg-primary); color: var(--text-muted);">Offline</span>
-            </div>
-            <div class="stat-value" id="don-banknifty-regime" style="font-size: 1.3rem;">Awaiting 12 PM</div>
-            <div class="stat-sub" style="margin-top: 8px;">
-              Score: <span id="don-banknifty-score">-</span>/8 •
-              P&L: <span id="don-banknifty-pnl">+0.00R</span> •
-              Trades: <span id="don-banknifty-trades">0</span>
-            </div>
-            <div id="don-banknifty-trade" style="display: none; margin-top: 8px; font-size: 0.8rem; color: var(--success);"></div>
-          </div>
+            <div class="engines-label">Scanned by: MODE_DON · RIJIN · VORTEX</div>
         </div>
+        {% endfor %}
+    </div>
 
-        <!-- DON System Summary -->
-        <div style="margin-top: 12px; padding: 12px 20px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
-          <span style="color: var(--text-secondary);">
-            System P&L: <strong id="don-system-pnl" style="color: var(--text-primary);">+0.00R</strong> •
-            Active: <strong id="don-active-count" style="color: var(--text-primary);">0</strong>/3
-          </span>
-          <span id="don-system-status" style="color: var(--text-muted);">Offline</span>
-        </div>
-      </div>
-
-      <!-- Console Log -->
-      <div class="console-panel">
-        <div class="console-header">📜 Console Output</div>
-        <div class="log-container" id="log-container">
-          Initializing Console...
-        </div>
-      </div>
+    <div class="system-bar">
+        <span>System P&L: <strong>{{ '%+.2f'|format(stats.system_pnl_r|default(0)) }}R</strong></span>
+        <span>System: <strong>{{ 'STOPPED' if stats.system_stopped else 'RUNNING' }}</strong></span>
+        <span>Version: <strong>{{ stats.version|default('V6.0') }}</strong></span>
     </div>
 
     <script>
-      // DOM Elements
-      const statusText = document.getElementById("status-text");
-      const statusDot = document.getElementById("status-dot");
-      const logBox = document.getElementById("log-container");
-      const tradePanel = document.getElementById("trade-panel");
-
-      // Update System Status
-      async function updateStatus() {
-        try {
-          const res = await fetch("/status");
-          const data = await res.json();
-
-          if (data.running) {
-            statusText.textContent = "SYSTEM ONLINE";
-            statusText.style.color = "var(--success)";
-            statusDot.classList.add("online");
-          } else {
-            statusText.textContent = "SYSTEM OFFLINE";
-            statusText.style.color = "var(--danger)";
-            statusDot.classList.remove("online");
-          }
-        } catch (e) {
-          console.error("Status update error:", e);
-        }
-      }
-
-      // Update RIJIN v3.0.1 Stats
-      async function updateRijinStats() {
-        try {
-          const res = await fetch("/rijin/v3/live-stats");
-          const data = await res.json();
-
-          // Day Type
-          document.getElementById("day-type").textContent =
-            data.day_type || "Unknown";
-          document.getElementById("phase").textContent =
-            `Phase: ${data.phase || "Detecting..."}`;
-
-          // System Status
-          const sysStatus = document.getElementById("system-status");
-          if (data.running) {
-            sysStatus.textContent = "Running";
-            sysStatus.style.color = "var(--success)";
-          } else {
-            sysStatus.textContent = "Offline";
-            sysStatus.style.color = "var(--danger)";
-          }
-
-          // Pause Status
-          const pauseEl = document.getElementById("pause-status");
-          if (data.paused) {
-            pauseEl.textContent = `⏸️ Paused until ${data.pause_until}`;
-            pauseEl.style.color = "var(--warning)";
-          } else {
-            pauseEl.textContent = "No pause";
-            pauseEl.style.color = "var(--text-secondary)";
-          }
-
-          // Daily P&L
-          const pnlEl = document.getElementById("daily-pnl");
-          const pnl = data.daily_pnl_r || 0;
-          pnlEl.textContent = `${pnl > 0 ? "+" : ""}${pnl.toFixed(2)}R`;
-          pnlEl.style.color = pnl >= 0 ? "var(--success)" : "var(--danger)";
-
-          document.getElementById("daily-trades").textContent =
-            `${data.daily_trades || 0} trades`;
-
-          // Consecutive Losses
-          const lossEl = document.getElementById("consec-losses");
-          lossEl.textContent = data.consecutive_losses || 0;
-          lossEl.style.color =
-            data.consecutive_losses >= 2
-              ? "var(--danger)"
-              : "var(--text-primary)";
-
-          const lossStatus = document.getElementById("loss-status");
-          if (data.consecutive_losses >= 2) {
-            lossStatus.textContent = "⚠️ At Limit";
-            lossStatus.style.color = "var(--danger)";
-          } else {
-            lossStatus.textContent = "✅ Active";
-            lossStatus.style.color = "var(--success)";
-          }
-
-          // Active Trade
-          if (data.active_trades > 0 && data.active_trade) {
-            const trade = data.active_trade;
-            document.getElementById("trade-details").innerHTML = `
-            <strong style="color: var(${trade.direction === "BUY" ? "--success" : "--danger"})">${trade.direction}</strong> @ ${trade.entry} | 
-            SL: ${trade.sl} | Target: ${trade.target}${trade.time ? ` | Time: ${trade.time}` : ""}
-          `;
-            tradePanel.style.display = "block";
-          } else {
-            tradePanel.style.display = "none";
-          }
-
-          // Today stats
-          const todayTrades = data.daily_trades || 0;
-          const todayWins = Math.round(todayTrades * 0.57); // Estimate
-          document.getElementById("today-trades").textContent = todayTrades;
-          document.getElementById("today-pnl").textContent =
-            `${pnl > 0 ? "+" : ""}${pnl.toFixed(2)}R`;
-          document.getElementById("today-winrate").textContent =
-            todayTrades > 0
-              ? `${Math.round((todayWins / todayTrades) * 100)}%`
-              : "-%";
-        } catch (e) {
-          console.error("RIJIN stats error:", e);
-        }
-      }
-
-      // Update Logs
-      async function fetchLogs() {
-        try {
-          const res = await fetch("/logs");
-          const data = await res.json();
-
-          if (logBox.textContent !== data.logs) {
-            logBox.textContent = data.logs;
-            logBox.scrollTop = logBox.scrollHeight;
-          }
-        } catch (e) {
-          console.error("Logs fetch error:", e);
-        }
-      }
-
-      // Control Functions
-      async function startBot() {
-        await fetch("/start", { method: "POST" });
-        setTimeout(updateStatus, 500);
-      }
-
-      async function stopBot() {
-        await fetch("/stop", { method: "POST" });
-        setTimeout(updateStatus, 500);
-      }
-
-      // MODE_DON Controls
-      async function startModeDon() {
-        await fetch("/mode-don/start", { method: "POST" });
-      }
-
-      async function stopModeDon() {
-        await fetch("/mode-don/stop", { method: "POST" });
-      }
-
-      // MODE_DON Stats
-      async function updateModeDonStats() {
-        try {
-          const res = await fetch("/mode-don/stats");
-          const data = await res.json();
-
-          // System-level
-          const sysPnl = data.system_pnl_r || 0;
-          const sysPnlEl = document.getElementById("don-system-pnl");
-          sysPnlEl.textContent = `${sysPnl > 0 ? "+" : ""}${sysPnl.toFixed(2)}R`;
-          sysPnlEl.style.color = sysPnl >= 0 ? "var(--success)" : "var(--danger)";
-
-          document.getElementById("don-active-count").textContent = data.active_trades || 0;
-
-          const sysStatus = document.getElementById("don-system-status");
-          if (data.system_stopped) {
-            sysStatus.textContent = "🛑 System Stopped";
-            sysStatus.style.color = "var(--danger)";
-          } else if (data.running) {
-            sysStatus.textContent = data.regime_computed ? "🟢 Active" : "⏳ Waiting for 12 PM";
-            sysStatus.style.color = data.regime_computed ? "var(--success)" : "var(--warning)";
-          } else {
-            sysStatus.textContent = "Offline";
-            sysStatus.style.color = "var(--text-muted)";
-          }
-
-          // Per-instrument
-          const instMap = { NIFTY: "nifty", SENSEX: "sensex", BANKNIFTY: "banknifty" };
-          for (const [key, id] of Object.entries(instMap)) {
-            const inst = data.instruments?.[key];
-            if (!inst) continue;
-
-            document.getElementById(`don-${id}-regime`).textContent = inst.regime || "Unknown";
-            document.getElementById(`don-${id}-score`).textContent = inst.regime_score ?? "-";
-
-            const pnlEl = document.getElementById(`don-${id}-pnl`);
-            const pnl = inst.daily_pnl_r || 0;
-            pnlEl.textContent = `${pnl > 0 ? "+" : ""}${pnl.toFixed(2)}R`;
-            pnlEl.style.color = pnl >= 0 ? "var(--success)" : "var(--danger)";
-
-            document.getElementById(`don-${id}-trades`).textContent = inst.daily_trades || 0;
-
-            // Status badge
-            const statusEl = document.getElementById(`don-${id}-status`);
-            if (inst.disabled) {
-              statusEl.textContent = "Disabled";
-              statusEl.style.color = "var(--danger)";
-              statusEl.style.background = "rgba(239,68,68,0.15)";
-            } else if (inst.active_trade) {
-              statusEl.textContent = `${inst.active_trade.direction} Active`;
-              statusEl.style.color = "var(--success)";
-              statusEl.style.background = "rgba(16,185,129,0.15)";
-            } else if (data.running) {
-              statusEl.textContent = "Scanning";
-              statusEl.style.color = "var(--accent)";
-              statusEl.style.background = "rgba(59,130,246,0.15)";
-            } else {
-              statusEl.textContent = "Offline";
-              statusEl.style.color = "var(--text-muted)";
-              statusEl.style.background = "var(--bg-primary)";
-            }
-
-            // Active trade details
-            const tradeEl = document.getElementById(`don-${id}-trade`);
-            if (inst.active_trade) {
-              tradeEl.textContent = `⚡ ${inst.active_trade.direction} @ ${inst.active_trade.entry} | Stop: ${inst.active_trade.stop}`;
-              tradeEl.style.display = "block";
-              tradeEl.style.color = inst.active_trade.direction === "LONG" ? "var(--success)" : "var(--danger)";
-            } else {
-              tradeEl.style.display = "none";
-            }
-          }
-        } catch (e) {
-          // Silently fail if endpoint not available
-        }
-      }
-
-      // Token Status Check
-      async function checkTokenStatus() {
-        try {
-          const res = await fetch("/auth-status");
-          const data = await res.json();
-          const banner = document.getElementById("token-banner");
-          const errorEl = document.getElementById("token-error");
-
-          if (data.valid === false) {
-            banner.style.display = "block";
-            errorEl.textContent = data.last_error || "";
-          } else {
-            banner.style.display = "none";
-          }
-        } catch (e) {
-          // Silently fail
-        }
-      }
-
-      // Initialize
-      updateStatus();
-      updateRijinStats();
-      fetchLogs();
-      updateModeDonStats();
-      checkTokenStatus();
-
-      // Auto-update every 2 seconds
-      setInterval(() => {
-        updateStatus();
-        updateRijinStats();
-        fetchLogs();
-        updateModeDonStats();
-      }, 2000);
-
-      // Token check every 30 seconds (not every 2s — it calls kite.profile)
-      setInterval(checkTokenStatus, 30000);
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            fetch('/status').then(r => r.json()).then(data => {
+                document.getElementById('statusDot').className = 'status-dot ' + (data.running ? 'online' : 'offline');
+                document.getElementById('statusText').textContent = data.running ? 'ONLINE' : 'OFFLINE';
+                if (data.token && data.token.valid === false) {
+                    document.getElementById('tokenBanner').classList.add('show');
+                } else {
+                    document.getElementById('tokenBanner').classList.remove('show');
+                }
+            });
+        }, 30000);
     </script>
-  </body>
+</body>
 </html>
