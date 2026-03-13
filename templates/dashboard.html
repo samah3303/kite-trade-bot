@@ -193,8 +193,135 @@
         <span>Version: <strong>{{ stats.version|default('V6.0') }}</strong></span>
     </div>
 
+    <!-- LIVE LOG PANEL -->
+    <div class="log-section">
+        <div class="log-header">
+            <h3>📋 Live Trading Logs</h3>
+            <div class="log-controls">
+                <button class="btn-log" onclick="clearLogs()">Clear</button>
+                <button class="btn-log" onclick="toggleAutoScroll()">
+                    <span id="scrollLabel">⏸ Pause</span>
+                </button>
+            </div>
+        </div>
+        <div class="log-terminal" id="logTerminal">
+            <div class="log-placeholder">Fetching logs...</div>
+        </div>
+    </div>
+
+    <style>
+        .log-section {
+            margin: 0 24px 24px;
+            background: #0c1018;
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .log-header h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #94a3b8;
+        }
+        .log-controls { display: flex; gap: 8px; }
+        .btn-log {
+            padding: 4px 12px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #94a3b8;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            cursor: pointer;
+        }
+        .btn-log:hover { background: rgba(255,255,255,0.1); color: #e1e8f0; }
+        .log-terminal {
+            height: 350px;
+            overflow-y: auto;
+            padding: 10px 16px;
+            font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+        .log-terminal::-webkit-scrollbar { width: 6px; }
+        .log-terminal::-webkit-scrollbar-track { background: transparent; }
+        .log-terminal::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        .log-placeholder { color: #475569; font-style: italic; }
+        .log-line { white-space: pre-wrap; word-break: break-all; }
+        .log-line.signal { color: #fbbf24; }
+        .log-line.success { color: #22c55e; }
+        .log-line.error { color: #f87171; }
+        .log-line.info { color: #7dd3fc; }
+        .log-line.engine { color: #a78bfa; }
+        .log-line.normal { color: #64748b; }
+    </style>
+
     <script>
-        // Auto-refresh every 30 seconds
+        let autoScroll = true;
+
+        function classifyLine(line) {
+            if (line.includes('🚨') || line.includes('SIGNAL')) return 'signal';
+            if (line.includes('✅') || line.includes('ONLINE') || line.includes('resolved')) return 'success';
+            if (line.includes('❌') || line.includes('ERROR') || line.includes('error') || line.includes('FAILED')) return 'error';
+            if (line.includes('🚀') || line.includes('MODE_DON') || line.includes('RIJIN') || line.includes('VORTEX') || line.includes('Gear')) return 'engine';
+            if (line.includes('📊') || line.includes('🔔') || line.includes('📅') || line.includes('🔑') || line.includes('Token')) return 'info';
+            return 'normal';
+        }
+
+        function fetchLogs() {
+            fetch('/logs')
+                .then(r => r.text())
+                .then(text => {
+                    const terminal = document.getElementById('logTerminal');
+                    const lines = text.trim().split('\n').filter(l => l.trim());
+
+                    // Filter for trading-relevant lines
+                    const keywords = ['SIGNAL', 'ENTRY', 'EXIT', 'Token', 'resolved', 'Engine',
+                                      'ONLINE', 'STOPPED', 'FAILED', 'error', 'ERROR', 'Gear',
+                                      'MODE_DON', 'RIJIN', 'VORTEX', 'Tri-Core', 'P&L',
+                                      '🚨', '✅', '❌', '🚀', '📊', '🔔', '🔑', '📅',
+                                      'BLOCKED', 'scan', 'Candle', 'blackout', 'EXPIRY',
+                                      'fetch', 'Token', 'instrument', 'New day'];
+
+                    const filtered = lines.filter(l =>
+                        keywords.some(k => l.toLowerCase().includes(k.toLowerCase()))
+                    );
+
+                    const display = filtered.length > 0 ? filtered.slice(-100) : lines.slice(-50);
+
+                    terminal.innerHTML = display.map(line => {
+                        const cls = classifyLine(line);
+                        const escaped = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        return `<div class="log-line ${cls}">${escaped}</div>`;
+                    }).join('');
+
+                    if (autoScroll) {
+                        terminal.scrollTop = terminal.scrollHeight;
+                    }
+                })
+                .catch(() => {});
+        }
+
+        function clearLogs() {
+            document.getElementById('logTerminal').innerHTML = '<div class="log-placeholder">Cleared. Waiting for new logs...</div>';
+        }
+
+        function toggleAutoScroll() {
+            autoScroll = !autoScroll;
+            document.getElementById('scrollLabel').textContent = autoScroll ? '⏸ Pause' : '▶ Resume';
+        }
+
+        // Fetch logs every 5 seconds
+        fetchLogs();
+        setInterval(fetchLogs, 5000);
+
+        // Status refresh every 30 seconds
         setInterval(() => {
             fetch('/status').then(r => r.json()).then(data => {
                 document.getElementById('statusDot').className = 'status-dot ' + (data.running ? 'online' : 'offline');
