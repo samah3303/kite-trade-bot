@@ -374,9 +374,10 @@
 
     <div class="grid">
         {% for name, inst in stats.instruments.items() %}
-        <div class="card">
+        <div class="card" data-instrument="{{ name }}">
             <div class="card-header">
                 <h3>{{ inst.emoji }} {{ inst.display_name }}</h3>
+                <span class="badge-slot">
                 {% if inst.disabled %}
                 <span class="badge disabled">DISABLED</span>
                 {% elif inst.token_resolved %}
@@ -384,20 +385,19 @@
                 {% else %}
                 <span class="badge pending">NO TOKEN</span>
                 {% endif %}
-            </div>
-            <div class="stat-row">
-                <span>Trades</span>
-                <span class="value">{{ inst.daily_trades }}</span>
-            </div>
-            <div class="stat-row">
-                <span>P&L</span>
-                <span class="value {{ 'positive' if inst.daily_pnl_r >= 0 else 'negative' }}">
-                    {{ '%+.2f'|format(inst.daily_pnl_r) }}R
                 </span>
             </div>
             <div class="stat-row">
+                <span>Trades</span>
+                <span class="value" data-field="trades">{{ inst.daily_trades }}</span>
+            </div>
+            <div class="stat-row">
+                <span>P&L</span>
+                <span class="value" data-field="pnl">{{ '%+.2f'|format(inst.daily_pnl_r) }}R</span>
+            </div>
+            <div class="stat-row">
                 <span>Position</span>
-                <span class="value">{{ '🟢 ACTIVE' if inst.active_trade else '—' }}</span>
+                <span class="value" data-field="position">{{ '🟢 ACTIVE' if inst.active_trade else '—' }}</span>
             </div>
             <div class="engines-label">MODE_DON · RIJIN · VORTEX</div>
         </div>
@@ -405,8 +405,8 @@
     </div>
 
     <div class="system-bar">
-        <span>P&L <strong>{{ '%+.2f'|format(stats.system_pnl_r|default(0)) }}R</strong></span>
-        <span>Status <strong>{{ 'STOPPED' if stats.system_stopped else 'RUNNING' }}</strong></span>
+        <span>P&L <strong id="sysPnl">{{ '%+.2f'|format(stats.system_pnl_r|default(0)) }}R</strong></span>
+        <span>Status <strong id="sysStatus">{{ 'STOPPED' if stats.system_stopped else 'RUNNING' }}</strong></span>
         <span>Build <strong>{{ stats.version|default('V6.0') }}</strong></span>
     </div>
 
@@ -475,15 +475,62 @@
         fetchLogs();
         setInterval(fetchLogs, 5000);
 
-        setInterval(() => {
+        function updateCards() {
             fetch('/status').then(r => r.json()).then(data => {
+                // Status dot
                 document.getElementById('statusDot').className = 'status-dot ' + (data.running ? 'online' : 'offline');
                 document.getElementById('statusText').textContent = data.running ? 'ONLINE' : 'OFFLINE';
+
+                // Token banner
                 const banner = document.getElementById('tokenBanner');
                 if (data.token && data.token.valid === false) banner.classList.add('show');
                 else banner.classList.remove('show');
-            });
-        }, 30000);
+
+                // System bar
+                const pnl = data.system_pnl_r || 0;
+                document.getElementById('sysPnl').textContent = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + 'R';
+                document.getElementById('sysStatus').textContent = data.system_stopped ? 'STOPPED' : 'RUNNING';
+
+                // Instrument cards
+                if (data.instruments) {
+                    for (const [name, inst] of Object.entries(data.instruments)) {
+                        const card = document.querySelector(`[data-instrument="${name}"]`);
+                        if (!card) continue;
+
+                        // Trades
+                        const tradesEl = card.querySelector('[data-field="trades"]');
+                        if (tradesEl) tradesEl.textContent = inst.daily_trades;
+
+                        // P&L with color
+                        const pnlEl = card.querySelector('[data-field="pnl"]');
+                        if (pnlEl) {
+                            const v = inst.daily_pnl_r || 0;
+                            pnlEl.textContent = (v >= 0 ? '+' : '') + v.toFixed(2) + 'R';
+                            pnlEl.className = 'value ' + (v >= 0 ? 'positive' : 'negative');
+                        }
+
+                        // Position
+                        const posEl = card.querySelector('[data-field="position"]');
+                        if (posEl) posEl.textContent = inst.active_trade ? '🟢 ACTIVE' : '—';
+
+                        // Badge
+                        const badgeSlot = card.querySelector('.badge-slot');
+                        if (badgeSlot) {
+                            if (inst.disabled) {
+                                badgeSlot.innerHTML = '<span class="badge disabled">DISABLED</span>';
+                            } else if (inst.token_resolved) {
+                                badgeSlot.innerHTML = '<span class="badge active">LIVE</span>';
+                            } else {
+                                badgeSlot.innerHTML = '<span class="badge pending">NO TOKEN</span>';
+                            }
+                        }
+                    }
+                }
+            }).catch(() => {});
+        }
+
+        updateCards();
+        setInterval(updateCards, 10000);
     </script>
 </body>
 </html>
